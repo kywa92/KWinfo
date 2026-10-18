@@ -2,6 +2,7 @@
 //! else lives here so that tests can drive the UI headlessly.
 
 pub mod app;
+pub mod diagnostics;
 pub mod dialogs;
 pub mod icons;
 pub mod menu;

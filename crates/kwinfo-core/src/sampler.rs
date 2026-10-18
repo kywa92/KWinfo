@@ -19,6 +19,9 @@ use crate::stats::Stats;
 /// The shortest polling interval the sampler accepts.
 pub const MIN_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Ticks between two `kwinfo::health` log lines.
+pub const HEALTH_EVERY: u64 = 60;
+
 #[derive(Clone, Debug)]
 pub struct SamplerConfig {
     /// Time between two sampling ticks.
@@ -236,6 +239,8 @@ struct Worker {
     tick: u64,
     /// How long the backends took during the last tick.
     tick_cost: Duration,
+    /// Tick costs since the last health line.
+    health: TickCosts,
     on_tick: Option<Box<dyn Fn() + Send>>,
     scratch: Vec<Sample>,
     disabled_channels: HashSet<ChannelId>,
@@ -269,6 +274,7 @@ impl Worker {
             next_tick: now,
             tick: 0,
             tick_cost: Duration::ZERO,
+            health: TickCosts::default(),
             on_tick: None,
             scratch: Vec::new(),
             disabled_channels: HashSet::new(),
@@ -528,9 +534,43 @@ impl Worker {
         self.tick += 1;
         self.tick_cost = start.elapsed();
         self.publish();
+        if let Some(line) = self.health_line() {
+            line.log();
+        }
         if let Some(on_tick) = &self.on_tick {
             on_tick();
         }
+    }
+
+    /// Every [`HEALTH_EVERY`] ticks, what the `kwinfo::health` line reports; the tick
+    /// costs then start accumulating afresh.
+    fn health_line(&mut self) -> Option<HealthLine> {
+        self.health.record(self.tick_cost);
+        if !self.tick.is_multiple_of(HEALTH_EVERY) {
+            return None;
+        }
+        let costs = std::mem::take(&mut self.health);
+        Some(HealthLine {
+            tick: self.tick,
+            interval: self.interval,
+            avg_tick: costs.average(),
+            max_tick: costs.max,
+            devices: self.devices.len(),
+            channels: self.channels.len(),
+            // Disabled channels have no reading on purpose; they are counted apart.
+            unreadable: self
+                .channels
+                .iter()
+                .filter(|c| !c.disabled && c.stats.current().is_none())
+                .count(),
+            disabled: self.channels.iter().filter(|c| c.disabled).count(),
+            failing_backends: self
+                .backends
+                .iter()
+                .filter(|slot| slot.failing)
+                .map(|slot| slot.backend.name())
+                .collect(),
+        })
     }
 
     fn publish(&self) {
@@ -566,6 +606,61 @@ impl Worker {
             devices,
         };
         self.shared.snapshot.store(Arc::new(snapshot));
+    }
+}
+
+/// Tick costs accumulated between two health lines.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct TickCosts {
+    ticks: u32,
+    total: Duration,
+    max: Duration,
+}
+
+impl TickCosts {
+    fn record(&mut self, cost: Duration) {
+        self.ticks += 1;
+        self.total += cost;
+        self.max = self.max.max(cost);
+    }
+
+    fn average(&self) -> Duration {
+        self.total.checked_div(self.ticks).unwrap_or_default()
+    }
+}
+
+/// The periodic `kwinfo::health` line: how expensive the ticks were and how many
+/// channels or backends are in trouble.
+#[derive(Clone, Debug, PartialEq)]
+struct HealthLine {
+    tick: u64,
+    interval: Duration,
+    avg_tick: Duration,
+    max_tick: Duration,
+    devices: usize,
+    channels: usize,
+    /// Enabled channels whose current value is missing.
+    unreadable: usize,
+    disabled: usize,
+    failing_backends: Vec<&'static str>,
+}
+
+impl HealthLine {
+    fn log(&self) {
+        let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+        info!(
+            target: "kwinfo::health",
+            tick = self.tick,
+            interval_ms = u64::try_from(self.interval.as_millis()).unwrap_or(u64::MAX),
+            avg_tick_ms = ms(self.avg_tick),
+            max_tick_ms = ms(self.max_tick),
+            devices = self.devices,
+            channels = self.channels,
+            unreadable = self.unreadable,
+            disabled = self.disabled,
+            failing_backends = %self.failing_backends.join(","),
+            "sampler health"
+        );
     }
 }
 
@@ -805,6 +900,79 @@ mod tests {
                 ChannelId::from_raw("test:pair/b"),
             ]))
         );
+    }
+
+    /// A backend that enumerates one device whose channel never has a reading and
+    /// whose sampling always fails.
+    struct Broken;
+
+    impl Backend for Broken {
+        fn name(&self) -> &'static str {
+            "broken"
+        }
+
+        fn enumerate(&mut self) -> anyhow::Result<Vec<(Device, Vec<Channel>)>> {
+            let device = Device::new("test:broken", "Broken", Category::Other);
+            let channel = Channel::new(&device.id, "x", "X", Kind::Count);
+            Ok(vec![(device, vec![channel])])
+        }
+
+        fn sample(&mut self, _out: &mut Vec<Sample>) -> anyhow::Result<()> {
+            anyhow::bail!("no such file")
+        }
+
+        fn rescan_every(&self) -> Option<Duration> {
+            None
+        }
+    }
+
+    #[test]
+    fn a_health_line_comes_every_sixty_ticks() {
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let shared = Arc::new(Shared {
+            snapshot: ArcSwap::from_pointee(Snapshot::empty(Instant::now(), MIN_INTERVAL)),
+            history: Mutex::new(HashMap::new()),
+        });
+        let backends: Vec<Box<dyn Backend>> = vec![
+            Box::new(Pair::new(told)),
+            Box::new(Counter::new()),
+            Box::new(Broken),
+        ];
+        let mut worker = Worker::new(backends, fast(4), shared);
+        worker.rescan(true);
+        worker.disabled_channels = HashSet::from([ChannelId::from_raw("test:pair/b")]);
+        worker.apply_disabled();
+
+        let mut lines = Vec::new();
+        for _ in 0..(2 * HEALTH_EVERY) {
+            worker.tick();
+            lines.extend(worker.health.ticks.eq(&0).then_some(worker.tick));
+        }
+        assert_eq!(
+            lines,
+            vec![HEALTH_EVERY, 2 * HEALTH_EVERY],
+            "costs reset after each line"
+        );
+
+        // One more round, checking the line itself.
+        let mut line = None;
+        for _ in 0..HEALTH_EVERY {
+            worker.tick += 1;
+            worker.tick_cost = Duration::from_millis(worker.tick % 4);
+            line = worker.health_line().or(line);
+        }
+        let line = line.expect("a line after sixty ticks");
+        assert_eq!(line.tick, 3 * HEALTH_EVERY);
+        assert_eq!((line.devices, line.channels), (3, 4));
+        assert_eq!(
+            line.unreadable, 1,
+            "the broken channel; not the disabled one"
+        );
+        assert_eq!(line.disabled, 1);
+        assert_eq!(line.failing_backends, vec!["broken"]);
+        assert_eq!(line.max_tick, Duration::from_millis(3));
+        assert_eq!(line.avg_tick, Duration::from_micros(1500));
+        line.log();
     }
 
     #[test]

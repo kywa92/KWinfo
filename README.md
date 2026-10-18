@@ -130,8 +130,10 @@ To collect everything from a test machine in one file to attach to a bug report:
 kwinfo-cli report
 ```
 
-See [docs/diagnostics.md](docs/diagnostics.md) for the locations, the environment
-variables and what the report contains.
+In the window, Settings → General → "Save diagnostic report…" writes the same report, with
+the sensors as the window shows them (renamed, hidden and disabled ones marked). See
+[docs/diagnostics.md](docs/diagnostics.md) for the locations, the environment variables
+and what the report contains.
 
 ## Testing
 

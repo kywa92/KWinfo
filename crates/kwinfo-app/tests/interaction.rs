@@ -14,16 +14,22 @@ use kwinfo_core::{BackendChoice, ChannelId, Config, ConfigFile, DeviceId, Rgb};
 /// The mock backend with a long polling period: one tick of values at start, then
 /// quiet, so that the UI settles between interactions.
 fn app(config: Config, config_file: Option<ConfigFile>) -> Harness<'static, KwinfoApp> {
+    start(Startup {
+        config,
+        config_file,
+        ..Startup::in_memory(BackendChoice::Mock)
+    })
+}
+
+fn start(startup: Startup) -> Harness<'static, KwinfoApp> {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(780.0, 720.0))
         .build_eframe(move |cc| {
             KwinfoApp::new(
                 cc,
                 Startup {
-                    config,
-                    config_file,
                     interval_ms: Some(60_000),
-                    ..Startup::in_memory(BackendChoice::Mock)
+                    ..startup
                 },
             )
         });
@@ -384,4 +390,32 @@ fn the_colour_dialog_applies_and_resets() {
     harness.get_by_label("Default colour").click();
     harness.run();
     assert_eq!(harness.state().config().color_of(&core2), None);
+}
+
+#[test]
+fn the_diagnostic_report_holds_what_the_window_shows() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("report.txt");
+    let mut config = Config::default();
+    config.update_channel(&id("cpu:mock/temp.core2"), |c| c.hidden = true);
+    let mut harness = start(Startup {
+        config,
+        report_out: Some(out.clone()),
+        ..Startup::in_memory(BackendChoice::Mock)
+    });
+    harness.state_mut().set_settings_open(true);
+    harness.run();
+    harness.get_by_label("Save diagnostic report…").click();
+    harness.run();
+    wait_for(&mut harness, |h| h.state().report_result().is_some());
+    harness.run();
+    assert_eq!(harness.state().report_result(), Some(&Ok(out.clone())));
+    assert!(harness.query_by_label("Report saved to").is_some());
+
+    let text = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        text.contains("## Sensor inventory\nCPU [#0]: Mock Hexa-Core 6000X  [cpu:mock]"),
+        "{text}"
+    );
+    assert!(text.contains("temp.core2  (hidden)"), "{text}");
 }

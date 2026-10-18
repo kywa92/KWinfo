@@ -87,6 +87,7 @@ fn main() -> eframe::Result {
         warnings,
         interval_ms: args.interval,
         theme: args.theme.map(ThemeMode::from),
+        report_out: None,
     };
 
     let options = eframe::NativeOptions {

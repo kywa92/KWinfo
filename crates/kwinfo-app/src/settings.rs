@@ -1,7 +1,7 @@
 //! The settings window (PLAN.md 4.4): General, Theme, Columns and Hidden sensors, plus
 //! the Logging, Helper and Alerts tabs that later milestones fill in.
 
-use egui::{Align, Button, Checkbox, Layout, RichText, ScrollArea, Ui};
+use egui::{Align, Button, Checkbox, Layout, RichText, ScrollArea, Spinner, Ui};
 use kwinfo_core::config::Column;
 use kwinfo_core::{ChannelId, DeviceId, Snapshot, TemperatureUnit, ThemeMode};
 
@@ -53,7 +53,8 @@ pub struct SettingsState {
 
 impl KwinfoApp {
     pub(crate) fn settings_window(&mut self, ctx: &egui::Context, snapshot: &Snapshot) {
-        let mut open = self.settings.open;
+        let was_open = self.settings.open;
+        let mut open = was_open;
         egui::Window::new("Settings")
             .open(&mut open)
             .resizable(false)
@@ -62,7 +63,12 @@ impl KwinfoApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     for tab in SettingsTab::ALL {
-                        ui.selectable_value(&mut self.settings.tab, tab, tab.label());
+                        if ui
+                            .selectable_value(&mut self.settings.tab, tab, tab.label())
+                            .clicked()
+                        {
+                            action!("settings.tab", tab = tab.label());
+                        }
                     }
                 });
                 ui.separator();
@@ -88,7 +94,10 @@ impl KwinfoApp {
                     ),
                 }
             });
-        self.settings.open = open;
+        if open != was_open {
+            // The window's own close button.
+            self.set_settings_open(open);
+        }
     }
 
     fn general_tab(&mut self, ui: &mut Ui) {
@@ -128,7 +137,48 @@ impl KwinfoApp {
                     );
                 }
                 ui.end_row();
+
+                ui.label("Diagnostics");
+                if ui
+                    .add_enabled(
+                        !self.report_running(),
+                        Button::new("Save diagnostic report…"),
+                    )
+                    .on_hover_text(
+                        "Write the logs, a machine summary, the settings and the sensors \
+                         shown here into one text file to attach to a bug report",
+                    )
+                    .clicked()
+                {
+                    self.save_report(ui.ctx());
+                }
+                ui.end_row();
             });
+        if self.report_running() {
+            ui.horizontal(|ui| {
+                ui.add(Spinner::new());
+                ui.label("Writing the report…");
+            });
+        } else if let Some(result) = &self.report_result {
+            match result {
+                Ok(path) => {
+                    let path = path.display().to_string();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Report saved to");
+                        ui.label(RichText::new(&path).monospace());
+                        if ui.small_button("Copy path").clicked() {
+                            ui.ctx().copy_text(path.clone());
+                        }
+                    });
+                }
+                Err(err) => {
+                    ui.label(
+                        RichText::new(format!("The report could not be written: {err}"))
+                            .color(tokens.text_primary),
+                    );
+                }
+            }
+        }
         ui.add_space(8.0);
         let saved_to = match self.persistence.path() {
             Some(path) => format!("Settings are saved to {}", path.display()),

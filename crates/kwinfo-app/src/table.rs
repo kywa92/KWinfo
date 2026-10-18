@@ -12,6 +12,8 @@ use kwinfo_core::{
     ChannelId, DeviceSnapshot, Snapshot, Stats, TemperatureUnit, Unit, format_value,
 };
 
+use kwinfo_diag::action;
+
 use crate::icons::{self, Icon};
 use crate::menu;
 use crate::theme::ThemeTokens;
@@ -416,6 +418,7 @@ fn device_row(row: &mut TableRow<'_, '_>, cx: &mut RowContext<'_, '_>, d: usize)
     }
     let response = row.response();
     if response.clicked() && !cx.filtering {
+        action!("device.collapse", device = %id, collapsed = !collapsed);
         cx.config.set_collapsed(id, !collapsed);
     }
     response.context_menu(|ui| {
@@ -476,6 +479,12 @@ fn group_row(row: &mut TableRow<'_, '_>, cx: &mut RowContext<'_, '_>, group: &Gr
     }
     let response = row.response();
     if response.clicked() && !cx.filtering {
+        action!(
+            "group.collapse",
+            device = %device.device.id,
+            group = group.name,
+            collapsed = !collapsed
+        );
         cx.config
             .set_group_collapsed(&device.device.id, group.name, !collapsed);
     }

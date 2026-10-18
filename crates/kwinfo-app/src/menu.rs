@@ -198,6 +198,7 @@ pub fn device(
         .button(if collapsed { "Expand" } else { "Collapse" })
         .clicked()
     {
+        action!("device.collapse", device = %id, collapsed = !collapsed);
         config.set_collapsed(id, !collapsed);
     }
     ui.separator();
@@ -287,6 +288,7 @@ pub fn group(
         .button(if collapsed { "Expand" } else { "Collapse" })
         .clicked()
     {
+        action!("group.collapse", device = %id, group = name, collapsed = !collapsed);
         config.set_group_collapsed(id, name, !collapsed);
     }
     ui.separator();

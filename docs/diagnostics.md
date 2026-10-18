@@ -28,7 +28,8 @@ older ones are deleted when the next run starts.
    dependencies, with graphics-stack chatter limited to warnings.
 4. User actions, on the `kwinfo::action` target: `action="settings.theme" mode=Dark`.
 5. A `kwinfo::health` line every 60 ticks: average and maximum tick cost, device and
-   channel counts, channels without a reading, failing backends.
+   channel counts, channels without a reading, sensors whose monitoring the user
+   disabled, failing backends.
 6. Panics with a backtrace (`kwinfo::panic`), and a "session end" line with the uptime.
 
 ## Sending everything in one file
@@ -40,6 +41,9 @@ kwinfo-cli report
 ```
 
 It writes `kwinfo-report-<hostname>-<UTC time>.txt` next to the logs and prints the path.
+The GUI writes the same report from Settings → General → "Save diagnostic report…", taking
+the sensor inventory from what the window shows (renamed, hidden and disabled sensors are
+marked) and the configuration from the settings file in use, and shows the path.
 The report contains the machine summary, the configuration file, a sensor inventory (every
 device and channel with its current value and stable id, taken live from the hardware), the
 list of log files, and the newest three logs (the last 2 MB of each). Options:

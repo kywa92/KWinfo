@@ -71,7 +71,14 @@ All notable changes to KWinfo are documented here. The format follows
 - Custom row colours keep their hue and get their lightness clamped per theme to reach
   4.5:1 contrast on every row background; kind icons are clamped to 3:1. An "Other
   colour…" dialog previews a colour in both themes.
-- User actions in the window are logged with `kwinfo_diag::action!`.
+- User actions in the window are logged with `kwinfo_diag::action!`: hide, rename,
+  colour, disable/enable, reset, copy, expand/collapse, filter and settings open/close,
+  settings changes, Show Graph and quit.
+- "Save diagnostic report…" in Settings → General writes a `kwinfo_diag` report whose
+  sensor inventory is the window's current view, on a background thread, and shows the
+  file's path.
+- The sampler logs a `kwinfo::health` line every 60 ticks: average and maximum tick cost,
+  device and channel counts, unreadable and disabled channels, failing backends.
 - Headless interaction tests of the window that run with `cargo test`, and snapshot
   baselines for a customised table and an open context menu in both themes.
 

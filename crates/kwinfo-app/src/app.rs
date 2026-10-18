@@ -2,6 +2,7 @@
 //! settings dialog, and the glue to the sampler and the configuration file.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,7 @@ use kwinfo_core::{
 
 use kwinfo_diag::action;
 
+use crate::diagnostics::{self, ReportJob};
 use crate::dialogs::{ColorDialog, Outcome, RenameDialog};
 use crate::icons::{self, Icon};
 use crate::persist::Persistence;
@@ -47,6 +49,9 @@ pub struct Startup {
     pub interval_ms: Option<u64>,
     /// Command line override of the theme, for this run only.
     pub theme: Option<ThemeMode>,
+    /// Where "Save diagnostic report…" writes; `None` puts the report next to the log
+    /// files, as `kwinfo-cli report` does.
+    pub report_out: Option<PathBuf>,
 }
 
 impl Startup {
@@ -59,6 +64,7 @@ impl Startup {
             warnings: Vec::new(),
             interval_ms: None,
             theme: None,
+            report_out: None,
         }
     }
 }
@@ -86,6 +92,10 @@ pub struct KwinfoApp {
     self_usage: SelfUsage,
     pub(crate) flash: Option<(String, Instant)>,
     snapshot: Arc<Snapshot>,
+    report_out: Option<PathBuf>,
+    report_job: Option<ReportJob>,
+    /// The last diagnostic report's file, or why it could not be written.
+    pub(crate) report_result: Option<Result<PathBuf, String>>,
 }
 
 impl KwinfoApp {
@@ -97,6 +107,7 @@ impl KwinfoApp {
             warnings,
             interval_ms,
             theme,
+            report_out,
         } = startup;
         let set = BackendSet::build(backend);
         for note in &set.notes {
@@ -134,6 +145,9 @@ impl KwinfoApp {
             self_usage: SelfUsage::new(),
             flash: None,
             snapshot,
+            report_out,
+            report_job: None,
+            report_result: None,
         };
         // Before the sampler's first tick, so disabled sensors are never read.
         app.sync_disabled();
@@ -164,7 +178,69 @@ impl KwinfoApp {
 
     /// Opens or closes the settings window.
     pub fn set_settings_open(&mut self, open: bool) {
+        if open != self.settings.open {
+            if open {
+                action!("settings.open", tab = self.settings.tab.label());
+            } else {
+                action!("settings.close");
+            }
+        }
         self.settings.open = open;
+    }
+
+    /// Opens or closes the quick filter; `via` says how, for the log.
+    pub(crate) fn set_filter_open(&mut self, open: bool, via: &str) {
+        if open == self.table.filter_open {
+            if open {
+                self.table.focus_filter = true;
+            }
+            return;
+        }
+        if open {
+            action!("filter.open", via);
+            self.table.open_filter();
+        } else {
+            action!("filter.close", via, filter = %self.table.filter);
+            self.table.close_filter();
+        }
+    }
+
+    /// The diagnostic report being written, or the outcome of the last one.
+    pub fn report_result(&self) -> Option<&Result<PathBuf, String>> {
+        self.report_result.as_ref()
+    }
+
+    /// Whether a diagnostic report is being written.
+    pub fn report_running(&self) -> bool {
+        self.report_job.is_some()
+    }
+
+    /// Starts writing a diagnostic report whose inventory is the current snapshot.
+    pub(crate) fn save_report(&mut self, ctx: &egui::Context) {
+        if self.report_job.is_some() {
+            return;
+        }
+        action!("diagnostics.report");
+        let inventory = diagnostics::inventory_text(&self.snapshot, &self.config);
+        self.report_result = None;
+        self.report_job = Some(ReportJob::start(
+            inventory,
+            self.report_out.clone(),
+            self.persistence.path().map(PathBuf::from),
+            ctx.clone(),
+        ));
+    }
+
+    fn poll_report(&mut self) {
+        let Some(result) = self.report_job.as_ref().and_then(ReportJob::poll) else {
+            return;
+        };
+        match &result {
+            Ok(path) => action!("diagnostics.report_saved", path = %path.display()),
+            Err(err) => tracing::warn!("the diagnostic report could not be written: {err}"),
+        }
+        self.report_job = None;
+        self.report_result = Some(result);
     }
 
     pub fn set_settings_tab(&mut self, tab: SettingsTab) {
@@ -260,10 +336,10 @@ impl KwinfoApp {
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let dialog_open = self.rename.is_some() || self.color.is_some();
         if !dialog_open && ctx.input_mut(|i| i.consume_shortcut(&FILTER_SHORTCUT)) {
-            self.table.open_filter();
+            self.set_filter_open(true, "shortcut");
         }
         if self.table.filter_open && !dialog_open && ctx.input(|i| i.key_pressed(Key::Escape)) {
-            self.table.close_filter();
+            self.set_filter_open(false, "escape");
         }
     }
 
@@ -357,7 +433,7 @@ impl KwinfoApp {
                     .on_hover_text("Close the filter (Esc)")
                     .clicked()
                 {
-                    self.table.close_filter();
+                    self.set_filter_open(false, "close button");
                 }
             });
         });
@@ -420,6 +496,7 @@ impl eframe::App for KwinfoApp {
         let snapshot = self.sampler.snapshot();
         self.snapshot = Arc::clone(&snapshot);
         self.shortcuts(&ctx);
+        self.poll_report();
 
         egui::Panel::bottom("toolbar")
             .frame(

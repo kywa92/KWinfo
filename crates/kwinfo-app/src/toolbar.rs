@@ -55,17 +55,14 @@ impl KwinfoApp {
                     self.quit(ui.ctx());
                 }
                 if icons::button(ui, Icon::Gear, Some("Settings"), "Settings").clicked() {
-                    self.settings.open = !self.settings.open;
+                    self.set_settings_open(!self.settings.open);
                 }
                 if icons::button(ui, Icon::Search, None, "Filter")
                     .on_hover_text("Filter sensors by name (Ctrl+F)")
                     .clicked()
                 {
-                    if self.table.filter_open {
-                        self.table.close_filter();
-                    } else {
-                        self.table.open_filter();
-                    }
+                    let open = !self.table.filter_open;
+                    self.set_filter_open(open, "toolbar");
                 }
                 self.helper_status(ui);
                 ui.add_space(4.0);
@@ -140,8 +137,8 @@ impl KwinfoApp {
         ui.painter()
             .circle_stroke(dot, 3.2, egui::Stroke::new(1.5, tokens.window_bg));
         if response.clicked() {
-            self.settings.open = true;
             self.settings.tab = SettingsTab::Helper;
+            self.set_settings_open(true);
         }
     }
 }
