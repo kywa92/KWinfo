@@ -7,7 +7,7 @@
 //! `cpuidle/stateK/{name,time}` (µs), `thermal_throttle/{core,package}_throttle_count`
 //! and `..._total_time_ms`; plus `/proc/stat` and `/proc/cpuinfo`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -229,6 +229,8 @@ struct ThrottlePlan {
     channel: ChannelId,
     /// `..._total_time_ms` where the kernel has it (5.18+), else `..._count`.
     counter: PathBuf,
+    /// Disabled by the user: not read.
+    skip: bool,
 }
 
 #[derive(Debug)]
@@ -236,6 +238,8 @@ struct CorePlan {
     clock: ChannelId,
     ratio: Option<ChannelId>,
     freq_files: Vec<PathBuf>,
+    /// The clock and the ratio are both disabled: the frequency files are not read.
+    skip: bool,
 }
 
 #[derive(Debug)]
@@ -243,6 +247,8 @@ struct CStatePlan {
     channel: ChannelId,
     /// `(cpu, path of cpuidle/stateK/time)` for every thread of the package.
     times: Vec<(u32, PathBuf)>,
+    /// Disabled by the user: not read.
+    skip: bool,
 }
 
 #[derive(Debug)]
@@ -301,7 +307,7 @@ impl CpuBackend {
 
         for package in &self.packages {
             // Clocks and ratios.
-            for core in &package.cores {
+            for core in package.cores.iter().filter(|core| !core.skip) {
                 let khz = core
                     .freq_files
                     .iter()
@@ -336,7 +342,7 @@ impl CpuBackend {
             out.push(Sample::new(package.total.clone(), total_usage));
 
             // Throttling: did the counter move since the last tick?
-            for throttle in &package.throttles {
+            for throttle in package.throttles.iter().filter(|t| !t.skip) {
                 let value = read_int(&throttle.counter)
                     .ok()
                     .and_then(|v| u64::try_from(v).ok());
@@ -353,7 +359,7 @@ impl CpuBackend {
             }
 
             // Idle-state residency, averaged over the package's threads.
-            for cstate in &package.cstates {
+            for cstate in package.cstates.iter().filter(|c| !c.skip) {
                 let mut spent = 0.0;
                 let mut threads = 0usize;
                 for (_, path) in &cstate.times {
@@ -387,6 +393,33 @@ impl CpuBackend {
 impl Backend for CpuBackend {
     fn name(&self) -> &'static str {
         "cpu"
+    }
+
+    /// Skips the per-core frequency files, throttle counters and idle-state times of
+    /// disabled rows. Usage is computed from one read of `/proc/stat` whatever is
+    /// disabled. Counters of skipped rows are forgotten, so that a row enabled again
+    /// starts from a fresh reading instead of the change over the whole pause.
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        for package in &mut self.packages {
+            for core in &mut package.cores {
+                core.skip = disabled.contains(&core.clock)
+                    && core.ratio.as_ref().is_none_or(|r| disabled.contains(r));
+            }
+            for throttle in &mut package.throttles {
+                throttle.skip = disabled.contains(&throttle.channel);
+                if throttle.skip {
+                    self.throttle_counters.remove(&throttle.counter);
+                }
+            }
+            for cstate in &mut package.cstates {
+                cstate.skip = disabled.contains(&cstate.channel);
+                if cstate.skip {
+                    for (_, path) in &cstate.times {
+                        self.idle_prev.remove(path);
+                    }
+                }
+            }
+        }
     }
 
     fn enumerate(&mut self) -> anyhow::Result<Vec<(Device, Vec<Channel>)>> {
@@ -431,7 +464,8 @@ impl Backend for CpuBackend {
                     &format!("clock.core{core}"),
                     format!("Core #{core} Clock"),
                     Kind::Clock,
-                );
+                )
+                .with_group("Core Clocks");
                 let ratio = has_ratio.then(|| {
                     Channel::new(
                         &id,
@@ -441,11 +475,13 @@ impl Backend for CpuBackend {
                     )
                     .with_unit(Unit::Multiplier)
                     .with_decimals(1)
+                    .with_group("Core Ratios")
                 });
                 core_plans.push(CorePlan {
                     clock: clock.id.clone(),
                     ratio: ratio.as_ref().map(|r| r.id.clone()),
                     freq_files,
+                    skip: false,
                 });
                 channels.push(clock);
                 ratios.extend(ratio);
@@ -459,7 +495,8 @@ impl Backend for CpuBackend {
                     &format!("usage.cpu{}", thread.cpu),
                     format!("Core #{} Thread #{} Usage", thread.core, thread.index),
                     Kind::Usage,
-                );
+                )
+                .with_group("Thread Usage");
                 thread_plans.push(ThreadPlan {
                     cpu: thread.cpu,
                     usage: channel.id.clone(),
@@ -491,10 +528,12 @@ impl Backend for CpuBackend {
                         &format!("throttle.core{core}"),
                         format!("Core #{core} Thermal Throttling"),
                         Kind::Boolean,
-                    );
+                    )
+                    .with_group("Thermal Throttling");
                     throttles.push(ThrottlePlan {
                         channel: channel.id.clone(),
                         counter,
+                        skip: false,
                     });
                     channels.push(channel);
                 }
@@ -505,10 +544,12 @@ impl Backend for CpuBackend {
                     "throttle.package",
                     "Package/Ring Thermal Throttling",
                     Kind::Boolean,
-                );
+                )
+                .with_group("Thermal Throttling");
                 throttles.push(ThrottlePlan {
                     channel: channel.id.clone(),
                     counter,
+                    skip: false,
                 });
                 channels.push(channel);
             }
@@ -543,10 +584,12 @@ impl Backend for CpuBackend {
                     &format!("cstate.{}", key_part(&name.to_lowercase())),
                     cstate_label(&name),
                     Kind::Usage,
-                );
+                )
+                .with_group("C-State Residency");
                 cstates.push(CStatePlan {
                     channel: channel.id.clone(),
                     times,
+                    skip: false,
                 });
                 channels.push(channel);
             }
@@ -784,5 +827,64 @@ mod tests {
         assert_close(get("throttle.core0"), 0.0);
         assert_close(get("cstate.c6"), 60.0);
         assert_close(get("cstate.c1e"), 0.0);
+    }
+
+    #[test]
+    fn runs_of_similar_rows_form_groups() {
+        let mut backend = CpuBackend::new(fixture_root());
+        let devices = backend.enumerate().unwrap();
+        let (_, channels) = &devices[0];
+        let group = |key: &str| channel(channels, key).group.as_deref();
+        assert_eq!(group("clock.core0"), Some("Core Clocks"));
+        assert_eq!(group("ratio.core5"), Some("Core Ratios"));
+        assert_eq!(group("usage.cpu11"), Some("Thread Usage"));
+        assert_eq!(group("throttle.package"), Some("Thermal Throttling"));
+        assert_eq!(group("cstate.c10"), Some("C-State Residency"));
+        assert_eq!(group("usage.total"), None);
+        assert_eq!(group("usage.max"), None);
+    }
+
+    #[test]
+    fn disabled_rows_skip_their_files_and_restart_cleanly() {
+        let mut backend = CpuBackend::new(fixture_root());
+        backend.enumerate().unwrap();
+        let id = |key: &str| ChannelId::from_raw(format!("cpu:0/{key}"));
+        let base = Instant::now();
+        let sample_at = |backend: &mut CpuBackend, secs: u64| {
+            let mut out = Vec::new();
+            backend.sample_at(base + Duration::from_secs(secs), &mut out);
+            sample_map(&out)
+        };
+
+        backend.set_disabled(&HashSet::from([
+            id("clock.core0"),
+            id("ratio.core0"),
+            id("throttle.package"),
+            id("cstate.c6"),
+        ]));
+        sample_at(&mut backend, 0);
+        let values = sample_at(&mut backend, 1);
+        for key in [
+            "clock.core0",
+            "ratio.core0",
+            "throttle.package",
+            "cstate.c6",
+        ] {
+            assert!(!values.contains_key(&id(key)), "{key} was read");
+        }
+        assert_close(values[&id("clock.core1")], 4300.0);
+        assert_close(values[&id("cstate.c1e")], 0.0);
+        assert!(values.contains_key(&id("usage.total")));
+
+        // A clock whose ratio is still wanted keeps being read.
+        backend.set_disabled(&HashSet::from([id("clock.core0")]));
+        let values = sample_at(&mut backend, 2);
+        assert_close(values[&id("ratio.core0")], 43.0);
+        // Counters skipped while disabled start afresh rather than spanning the pause.
+        assert_eq!(values[&id("throttle.package")], None);
+        assert_eq!(values[&id("cstate.c6")], None);
+        let values = sample_at(&mut backend, 3);
+        assert_close(values[&id("throttle.package")], 0.0);
+        assert_close(values[&id("cstate.c6")], 0.0);
     }
 }

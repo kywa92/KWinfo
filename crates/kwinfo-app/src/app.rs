@@ -1,42 +1,108 @@
-//! The main window: the Sensor Status table, the bottom toolbar and the settings dialog.
+//! The main window: the Sensor Status table, the quick filter, the bottom toolbar, the
+//! settings dialog, and the glue to the sampler and the configuration file.
 
-use std::time::Duration;
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use egui::{Align, Button, ComboBox, Frame, Layout, Margin, RichText};
-use kwinfo_core::{BackendChoice, BackendSet, Sampler, SamplerConfig, Snapshot, TemperatureUnit};
+use egui::{Frame, Key, KeyboardShortcut, Margin, Modifiers, RichText, TextEdit, ViewportCommand};
+use kwinfo_core::{
+    BackendChoice, BackendSet, ChannelId, Config, ConfigFile, DeviceId, Sampler, SamplerConfig,
+    Snapshot, ThemeMode,
+};
 
+use kwinfo_diag::action;
+
+use crate::dialogs::{ColorDialog, Outcome, RenameDialog};
+use crate::icons::{self, Icon};
+use crate::persist::Persistence;
+use crate::self_usage::SelfUsage;
+use crate::settings::{SettingsState, SettingsTab};
 use crate::system_theme::SystemTheme;
-use crate::table::{self, TableState};
-use crate::theme::{self, Palette, ThemeMode, ThemeTokens};
+use crate::table::{self, TableAction, TableState, TableView};
+use crate::theme::{self, Palette, ThemeTokens};
 
 pub const TITLE: &str = "KWinfo – Sensor Status";
 pub const APP_ID: &str = "io.github.kylanwalters.KWinfo";
 
-const POLLING_CHOICES_MS: [u64; 5] = [250, 500, 1000, 2000, 5000];
+/// The polling periods offered in the toolbar and the settings.
+pub const POLLING_CHOICES_MS: [u64; 6] = [250, 500, 1000, 2000, 3000, 5000];
+/// The window size until the user resizes it.
+pub const DEFAULT_WINDOW_SIZE: [f32; 2] = [780.0, 720.0];
+/// Opens the quick filter: Ctrl+F (Cmd+F on macOS).
+pub const FILTER_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
+/// How long a confirmation such as "Copied 48.0 °C" stays in the toolbar.
+const FLASH_FOR: Duration = Duration::from_secs(3);
+
+/// How the application starts.
+pub struct Startup {
+    pub backend: BackendChoice,
+    /// The settings in effect at start, usually loaded from `config_file`.
+    pub config: Config,
+    /// Where settings are saved; `None` keeps them in memory (tests, previews).
+    pub config_file: Option<ConfigFile>,
+    /// Problems to show the user, e.g. why the settings file could not be used.
+    pub warnings: Vec<String>,
+    /// Command line override of the polling period, for this run only.
+    pub interval_ms: Option<u64>,
+    /// Command line override of the theme, for this run only.
+    pub theme: Option<ThemeMode>,
+}
+
+impl Startup {
+    /// Default settings, kept in memory only.
+    pub fn in_memory(backend: BackendChoice) -> Self {
+        Self {
+            backend,
+            config: Config::default(),
+            config_file: None,
+            warnings: Vec::new(),
+            interval_ms: None,
+            theme: None,
+        }
+    }
+}
 
 pub struct KwinfoApp {
-    sampler: Sampler,
+    pub(crate) sampler: Sampler,
+    /// Notes from the backends, shown when there is nothing else to show.
     notes: Vec<String>,
-    theme_mode: ThemeMode,
+    /// Problems the user should know about (settings file); dismissable.
+    warnings: Vec<String>,
+    pub(crate) config: Config,
+    pub(crate) persistence: Persistence,
+    /// The theme in effect: the command line's choice until the user picks one.
+    pub(crate) theme_mode: ThemeMode,
+    /// The polling period in effect, likewise.
+    pub(crate) interval_ms: u64,
     applied: Option<Palette>,
     system_theme: SystemTheme,
-    temperature: TemperatureUnit,
-    table: TableState,
-    show_settings: bool,
-    interval_ms: u64,
+    pub(crate) table: TableState,
+    pub(crate) settings: SettingsState,
+    rename: Option<RenameDialog>,
+    color: Option<ColorDialog>,
+    sent_disabled: Option<(HashSet<ChannelId>, HashSet<DeviceId>)>,
+    title: String,
+    self_usage: SelfUsage,
+    pub(crate) flash: Option<(String, Instant)>,
+    snapshot: Arc<Snapshot>,
 }
 
 impl KwinfoApp {
-    pub fn new(
-        cc: &eframe::CreationContext<'_>,
-        choice: BackendChoice,
-        interval_ms: u64,
-        theme_mode: ThemeMode,
-    ) -> Self {
-        let set = BackendSet::build(choice);
+    pub fn new(cc: &eframe::CreationContext<'_>, startup: Startup) -> Self {
+        let Startup {
+            backend,
+            config,
+            config_file,
+            warnings,
+            interval_ms,
+            theme,
+        } = startup;
+        let set = BackendSet::build(backend);
         for note in &set.notes {
             tracing::info!("{note}");
         }
+        let interval_ms = interval_ms.unwrap_or(config.polling.interval_ms);
         let sampler = Sampler::start(
             set.backends,
             SamplerConfig {
@@ -48,17 +114,78 @@ impl KwinfoApp {
         sampler.set_on_tick(move || ctx.request_repaint());
         theme::install(&cc.egui_ctx);
         let system_theme = SystemTheme::start(cc.egui_ctx.clone());
-        Self {
+        let snapshot = sampler.snapshot();
+        let mut app = Self {
             sampler,
             notes: set.notes,
-            theme_mode,
+            warnings,
+            persistence: Persistence::new(config_file, &config),
+            theme_mode: theme.unwrap_or(config.theme.mode),
+            interval_ms,
+            config,
             applied: None,
             system_theme,
-            temperature: TemperatureUnit::Celsius,
             table: TableState::default(),
-            show_settings: false,
-            interval_ms,
+            settings: SettingsState::default(),
+            rename: None,
+            color: None,
+            sent_disabled: None,
+            title: TITLE.to_string(),
+            self_usage: SelfUsage::new(),
+            flash: None,
+            snapshot,
+        };
+        // Before the sampler's first tick, so disabled sensors are never read.
+        app.sync_disabled();
+        app
+    }
+
+    /// The settings as they are now (saved shortly after every change).
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+
+    pub fn table_state(&self) -> &TableState {
+        &self.table
+    }
+
+    pub fn table_state_mut(&mut self) -> &mut TableState {
+        &mut self.table
+    }
+
+    /// The sampler's latest snapshot.
+    pub fn latest_snapshot(&self) -> Arc<Snapshot> {
+        self.sampler.snapshot()
+    }
+
+    /// Opens or closes the settings window.
+    pub fn set_settings_open(&mut self, open: bool) {
+        self.settings.open = open;
+    }
+
+    pub fn set_settings_tab(&mut self, tab: SettingsTab) {
+        self.settings.tab = tab;
+    }
+
+    /// The window title: hidden-value count, and on Linux KWinfo's own CPU use.
+    pub fn window_title(&self) -> String {
+        let mut title = TITLE.to_string();
+        let hidden = table::hidden_count(&self.snapshot, &self.config);
+        if hidden > 0 {
+            title.push_str(&format!(" [{hidden} value(s) hidden]"));
         }
+        if let Some(percent) = self.self_usage.percent() {
+            title.push_str(&format!(" ({percent:.1}%)"));
+        }
+        title
+    }
+
+    pub(crate) fn tokens(&self) -> &'static ThemeTokens {
+        ThemeTokens::for_palette(self.applied.unwrap_or(Palette::Dark))
     }
 
     fn effective_palette(&self, ctx: &egui::Context) -> Palette {
@@ -73,125 +200,186 @@ impl KwinfoApp {
         }
     }
 
-    fn tokens(&self) -> &'static ThemeTokens {
-        ThemeTokens::for_palette(self.applied.unwrap_or(Palette::Dark))
+    /// The user picked a theme: it applies now and is saved.
+    pub(crate) fn set_theme_mode(&mut self, mode: ThemeMode) {
+        action!("settings.theme", mode = ?mode);
+        self.theme_mode = mode;
+        self.config.theme.mode = mode;
     }
 
-    /// The polling-period selector. `label` is the id of the text that names it, so
-    /// screen readers (and the test harness) know what the box is for.
-    fn polling_combo(&mut self, ui: &mut egui::Ui, id: &str, label: egui::Id) {
-        ComboBox::from_id_salt(id)
-            .width(90.0)
-            .selected_text(format!("{} ms", self.interval_ms))
-            .show_ui(ui, |ui| {
-                for ms in POLLING_CHOICES_MS {
-                    if ui
-                        .selectable_value(&mut self.interval_ms, ms, format!("{ms} ms"))
-                        .clicked()
-                    {
-                        self.sampler.set_interval(Duration::from_millis(ms));
-                    }
+    /// The user picked a polling period: it applies now and is saved.
+    pub(crate) fn set_interval(&mut self, ms: u64) {
+        action!("settings.polling", interval_ms = ms);
+        self.interval_ms = ms;
+        self.config.polling.interval_ms = ms;
+        self.sampler.set_interval(Duration::from_millis(ms));
+    }
+
+    /// Shows `text` in the toolbar for a few seconds.
+    pub(crate) fn flash(&mut self, text: impl Into<String>) {
+        self.flash = Some((text.into(), Instant::now()));
+    }
+
+    /// Saves and closes the window.
+    pub(crate) fn quit(&mut self, ctx: &egui::Context) {
+        action!("app.quit");
+        self.persistence.flush(&self.config);
+        ctx.send_viewport_cmd(ViewportCommand::Close);
+    }
+
+    /// Tells the sampler which sensors not to poll, when that changed.
+    fn sync_disabled(&mut self) {
+        let wanted = (
+            self.config.disabled_channels(),
+            self.config.disabled_devices(),
+        );
+        if self.sent_disabled.as_ref() != Some(&wanted) {
+            self.sampler
+                .set_disabled(wanted.0.clone(), wanted.1.clone());
+            self.sent_disabled = Some(wanted);
+        }
+    }
+
+    fn remember_window_size(&mut self, ctx: &egui::Context) {
+        let (rect, maximized, fullscreen) = ctx.input(|i| {
+            let viewport = i.viewport();
+            (viewport.inner_rect, viewport.maximized, viewport.fullscreen)
+        });
+        if maximized == Some(true) || fullscreen == Some(true) {
+            return;
+        }
+        if let Some(rect) = rect.filter(|r| r.is_positive()) {
+            let size = rect.size().round();
+            if self.config.window.size() != Some([size.x, size.y]) {
+                self.config.window.width = Some(size.x);
+                self.config.window.height = Some(size.y);
+            }
+        }
+    }
+
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        let dialog_open = self.rename.is_some() || self.color.is_some();
+        if !dialog_open && ctx.input_mut(|i| i.consume_shortcut(&FILTER_SHORTCUT)) {
+            self.table.open_filter();
+        }
+        if self.table.filter_open && !dialog_open && ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.table.close_filter();
+        }
+    }
+
+    fn apply(&mut self, action: TableAction, snapshot: &Snapshot) {
+        match action {
+            TableAction::ShowGraph(id) => {
+                let label = snapshot
+                    .find(&id)
+                    .map_or(id.as_str(), |c| self.config.label_of(&c.channel))
+                    .to_string();
+                action!("sensor.show_graph", channel = %id, note = "graph windows arrive in M3");
+                self.flash(format!("Graph of {label}: arrives in M3"));
+            }
+            TableAction::Rename(id) => {
+                if let Some(entry) = snapshot.find(&id) {
+                    let current = self.config.label_of(&entry.channel).to_string();
+                    self.rename = Some(RenameDialog::new(id, &entry.channel.label, &current));
                 }
-            })
-            .response
-            .labelled_by(label);
+            }
+            TableAction::PickColor(id) => {
+                if let Some(entry) = snapshot.find(&id) {
+                    let tokens = self.tokens();
+                    let start = self.config.color_of(&id).map_or_else(
+                        || tokens.icon_color(entry.channel.kind),
+                        |rgb| egui::Color32::from_rgb(rgb.r, rgb.g, rgb.b),
+                    );
+                    let label = self.config.label_of(&entry.channel).to_string();
+                    self.color = Some(ColorDialog::new(id, &label, start));
+                }
+            }
+            TableAction::Reset(ids) => {
+                action!("sensor.reset", count = ids.len());
+                self.sampler.reset_channels(ids);
+            }
+            TableAction::Copied(text) => self.flash(format!("Copied {text}")),
+            TableAction::ResetWidths => {}
+        }
     }
 
-    /// Opens or closes the settings window.
-    pub fn set_settings_open(&mut self, open: bool) {
-        self.show_settings = open;
+    fn dialogs(&mut self, ctx: &egui::Context) {
+        let tokens = self.tokens();
+        if let Some(dialog) = &mut self.rename
+            && let Some(outcome) = dialog.show(ctx, tokens)
+        {
+            if let Outcome::Apply(label) = outcome {
+                action!("sensor.rename", channel = %dialog.channel, label = ?label);
+                self.config
+                    .update_channel(&dialog.channel, |c| c.label = label);
+            }
+            self.rename = None;
+        }
+        if let Some(dialog) = &mut self.color
+            && let Some(outcome) = dialog.show(ctx, tokens)
+        {
+            if let Outcome::Apply(color) = outcome {
+                let shown = color.map_or_else(|| "default".to_string(), |c| c.to_string());
+                action!("sensor.colour", channel = %dialog.channel, colour = %shown);
+                self.config
+                    .update_channel(&dialog.channel, |c| c.color = color);
+            }
+            self.color = None;
+        }
     }
 
-    fn toolbar(&mut self, ui: &mut egui::Ui, snapshot: &Snapshot) {
+    fn filter_bar(&mut self, ui: &mut egui::Ui, snapshot: &Snapshot) {
+        let tokens = self.tokens();
         ui.horizontal(|ui| {
-            let all_collapsed = self.table.all_collapsed(snapshot);
-            let label = if all_collapsed {
-                "Expand all"
-            } else {
-                "Collapse all"
-            };
-            if ui.button(label).clicked() {
-                self.table.set_all_collapsed(snapshot, !all_collapsed);
+            icons::icon(ui, Icon::Search, tokens.text_secondary);
+            let label = ui.label("Filter");
+            let edit = ui
+                .add(
+                    TextEdit::singleline(&mut self.table.filter)
+                        .hint_text("Sensor, group or device name")
+                        .desired_width(260.0),
+                )
+                .labelled_by(label.id);
+            if std::mem::take(&mut self.table.focus_filter) {
+                edit.request_focus();
             }
-            if ui
-                .button("Reset")
-                .on_hover_text("Reset minimum, maximum and average of every sensor")
-                .clicked()
-            {
-                self.sampler.reset_all();
+            if !self.table.active_filter().is_empty() {
+                let shown = table::layout(snapshot, &self.config, self.table.active_filter()).shown;
+                let text = match shown {
+                    0 => "No sensor matches".to_string(),
+                    1 => "1 sensor".to_string(),
+                    n => format!("{n} sensors"),
+                };
+                ui.label(RichText::new(text).color(tokens.text_secondary));
             }
-            ui.add_enabled(false, Button::new("Logging"))
-                .on_disabled_hover_text("CSV logging arrives in milestone M5");
-            ui.separator();
-            ui.monospace(format_elapsed(snapshot.elapsed()))
-                .on_hover_text("Time since the statistics were last reset");
-            ui.separator();
-            let poll_label = ui.label("Poll:");
-            self.polling_combo(ui, "toolbar-polling", poll_label.id);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("Settings").clicked() {
-                    self.show_settings = !self.show_settings;
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if icons::button(ui, Icon::Close, None, "Close filter")
+                    .on_hover_text("Close the filter (Esc)")
+                    .clicked()
+                {
+                    self.table.close_filter();
                 }
-                let status = format!(
-                    "{} sensors · tick {:.1} ms",
-                    snapshot.channel_count(),
-                    snapshot.tick_cost.as_secs_f64() * 1000.0
-                );
-                ui.label(RichText::new(status).color(self.tokens().text_secondary));
             });
         });
     }
 
-    fn settings_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.show_settings;
-        egui::Window::new("Settings")
-            .open(&mut open)
-            .resizable(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                egui::Grid::new("settings-grid")
-                    .num_columns(2)
-                    .spacing([16.0, 8.0])
-                    .show(ui, |ui| {
-                        let theme_label = ui.label("Theme");
-                        ComboBox::from_id_salt("settings-theme")
-                            .selected_text(self.theme_mode.label())
-                            .show_ui(ui, |ui| {
-                                for mode in [ThemeMode::Auto, ThemeMode::Dark, ThemeMode::Light] {
-                                    ui.selectable_value(&mut self.theme_mode, mode, mode.label());
-                                }
-                            })
-                            .response
-                            .labelled_by(theme_label.id);
-                        ui.end_row();
-
-                        ui.label("Temperature");
-                        ui.horizontal(|ui| {
-                            ui.radio_value(
-                                &mut self.temperature,
-                                TemperatureUnit::Celsius,
-                                "Celsius",
-                            );
-                            ui.radio_value(
-                                &mut self.temperature,
-                                TemperatureUnit::Fahrenheit,
-                                "Fahrenheit",
-                            );
-                        });
-                        ui.end_row();
-
-                        let polling_label = ui.label("Polling");
-                        self.polling_combo(ui, "settings-polling", polling_label.id);
-                        ui.end_row();
-                    });
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new("Settings are not saved between runs yet (milestone M2).")
-                        .small()
-                        .color(self.tokens().text_secondary),
-                );
+    fn warnings_bar(&mut self, ui: &mut egui::Ui) {
+        let tokens = self.tokens();
+        let mut dismissed = false;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Note:").strong().color(tokens.text_primary));
+            ui.vertical(|ui| {
+                for warning in &self.warnings {
+                    ui.label(warning);
+                }
             });
-        self.show_settings = open;
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                dismissed = ui.button("Dismiss").clicked();
+            });
+        });
+        if dismissed {
+            self.warnings.clear();
+        }
     }
 
     fn empty_state(&self, ui: &mut egui::Ui) {
@@ -220,11 +408,19 @@ impl eframe::App for KwinfoApp {
             ctx.set_theme(palette.preference());
             self.applied = Some(palette);
         }
+        self.remember_window_size(ctx);
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.persistence.flush(&self.config);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         let tokens = self.tokens();
         let snapshot = self.sampler.snapshot();
+        self.snapshot = Arc::clone(&snapshot);
+        self.shortcuts(&ctx);
+
         egui::Panel::bottom("toolbar")
             .frame(
                 Frame::new()
@@ -232,16 +428,76 @@ impl eframe::App for KwinfoApp {
                     .inner_margin(Margin::symmetric(8, 6)),
             )
             .show(ui, |ui| self.toolbar(ui, &snapshot));
+        if let Some(error) = self.persistence.error() {
+            let note = format!("The settings could not be saved: {error}");
+            if !self.warnings.contains(&note) {
+                self.warnings.push(note);
+            }
+        }
+        if !self.warnings.is_empty() {
+            egui::Panel::top("warnings")
+                .frame(
+                    Frame::new()
+                        .fill(tokens.group_row)
+                        .inner_margin(Margin::symmetric(8, 6)),
+                )
+                .show(ui, |ui| self.warnings_bar(ui));
+        }
+        if self.table.filter_open {
+            egui::Panel::top("filter")
+                .frame(
+                    Frame::new()
+                        .fill(tokens.window_bg)
+                        .inner_margin(Margin::symmetric(8, 5)),
+                )
+                .show(ui, |ui| self.filter_bar(ui, &snapshot));
+        }
+        let mut actions = Vec::new();
         egui::CentralPanel::default()
             .frame(Frame::new().fill(tokens.table_bg))
             .show(ui, |ui| {
                 if snapshot.devices.is_empty() {
                     self.empty_state(ui);
                 } else {
-                    table::show(ui, &snapshot, &mut self.table, tokens, self.temperature);
+                    let view = TableView {
+                        snapshot: &snapshot,
+                        config: &mut self.config,
+                        tokens,
+                    };
+                    actions = table::show(ui, view, &mut self.table);
                 }
             });
-        self.settings_window(ui.ctx());
+        self.settings_window(&ctx, &snapshot);
+        self.dialogs(&ctx);
+        for action in actions {
+            self.apply(action, &snapshot);
+        }
+        self.sync_disabled();
+
+        self.self_usage.update(Instant::now());
+        let title = self.window_title();
+        if title != self.title {
+            ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
+        if let Some(wait) = self.persistence.update(&self.config, Instant::now()) {
+            ctx.request_repaint_after(wait);
+        }
+        if let Some((_, since)) = &self.flash {
+            match FLASH_FOR.checked_sub(since.elapsed()) {
+                Some(left) => ctx.request_repaint_after(left),
+                None => self.flash = None,
+            }
+        }
+    }
+}
+
+impl Drop for KwinfoApp {
+    /// Last chance to save changes made just before quitting.
+    fn drop(&mut self) {
+        if self.persistence.is_dirty(&self.config) {
+            self.persistence.flush(&self.config);
+        }
     }
 }
 

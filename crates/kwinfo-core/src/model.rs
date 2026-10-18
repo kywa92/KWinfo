@@ -295,6 +295,10 @@ pub struct Channel {
     /// Warning and critical thresholds reported by the hardware, if any.
     #[serde(default, skip_serializing_if = "Limits::is_empty")]
     pub limits: Limits,
+    /// Name of a run of similar rows within the device, such as `Core Clocks`. The table
+    /// nests the rows of a group under one collapsible row when there are enough of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 impl Channel {
@@ -309,11 +313,17 @@ impl Channel {
             decimals: kind.default_decimals(),
             source: Source::Unprivileged,
             limits: Limits::default(),
+            group: None,
         }
     }
 
     pub fn with_limits(mut self, limits: Limits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    pub fn with_group(mut self, group: impl Into<String>) -> Self {
+        self.group = Some(group.into());
         self
     }
 
@@ -399,5 +409,18 @@ mod tests {
         let json = serde_json::to_string(&limited).unwrap();
         let back: Channel = serde_json::from_str(&json).unwrap();
         assert_eq!(back.limits.crit, Some(100.0));
+    }
+
+    #[test]
+    fn groups_are_optional_on_the_wire() {
+        let device = DeviceId::new("cpu:0");
+        let plain = Channel::new(&device, "clock.core0", "Core #0 Clock", Kind::Clock);
+        let json = serde_json::to_string(&plain).unwrap();
+        assert!(!json.contains("group"), "{json}");
+
+        let grouped = plain.with_group("Core Clocks");
+        let json = serde_json::to_string(&grouped).unwrap();
+        let back: Channel = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.group.as_deref(), Some("Core Clocks"));
     }
 }

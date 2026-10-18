@@ -4,11 +4,13 @@ A Linux hardware monitor in the spirit of HWiNFO64's *Sensor Status* window and 
 floating sensor graphs. Written in Rust with [egui](https://github.com/emilk/egui), shipped
 as a `.deb` and an AppImage, with dark and light themes.
 
-**Status:** milestone M1. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
+**Status:** milestone M2. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
 `block`, `memory`, `network`, `power_supply`, plus lm-sensors labels) read real hardware on
-Linux; the window is still the M0 table. Root-only sensors (RAPL power, MSRs, S.M.A.R.T.,
-GPU busy) arrive with the helper in M4. See [PLAN.md](PLAN.md) for the full design and the
-milestone list.
+Linux, and the Sensor Status window is complete: a tree-table with sub-groups, per-kind
+icons, context menus, a quick filter, a toolbar and a settings dialog, with every setting
+remembered between runs. Graph windows arrive in M3; root-only sensors (RAPL power, MSRs,
+S.M.A.R.T., GPU busy) with the helper in M4; logging, tray values and alerts in M5. See
+[PLAN.md](PLAN.md) for the full design and the milestone list.
 
 ## Building
 
@@ -33,6 +35,59 @@ cargo run -p kwinfo-cli -- list --ids
 The `libsensors` cargo feature (on by default, Linux only) applies the labels, `ignore`
 and `compute` statements of `/etc/sensors3.conf` and `/etc/sensors.d/`. Build with
 `--no-default-features` to leave it out; nothing else needs `libsensors-dev` or `clang`.
+
+## The Sensor Status window
+
+- Devices are group rows; click one to collapse or expand it. Runs of similar rows
+  (Core Clocks, Thread Usage, C-State Residency, Distance to TjMAX, …) are nested in
+  sub-groups whose row shows the lowest minimum and highest maximum of its members.
+- Right-click a sensor for Show Graph (graph windows arrive in M3; a double-click does the
+  same), Rename, Hide, Custom colour, Disable monitoring, Reset this sensor and Copy
+  value. Right-click a device to collapse it, reset its values, disable monitoring of the
+  whole device or copy its values as text; right-click the header to choose columns.
+- Hidden sensors are counted in the title, `[N value(s) hidden]`. Settings → General (or
+  Hidden sensors) → "Show hidden sensors" lists them greyed out so they can be un-hidden.
+- Disabled sensors are not polled at all: the backends skip their files and their
+  statistics are cleared until they are enabled again.
+- Ctrl+F opens a quick filter over sensor, group and device names; Esc closes it.
+- Column widths (drag the header dividers), visible columns, collapsed groups, names,
+  colours, the theme, the temperature unit, the polling period and the window size are
+  all remembered. Custom colours are stored once; each theme adjusts their lightness so
+  they stay readable on its background.
+
+The row and toolbar icons are painted vector shapes rather than Phosphor glyphs:
+`egui-phosphor` has no release for egui 0.37 yet.
+
+## Settings
+
+Settings live in `~/.config/kwinfo/config.toml` (`$XDG_CONFIG_HOME/kwinfo/` if set; on
+macOS `~/Library/Application Support/io.github.kylanwalters.kwinfo/`). KWinfo writes the
+file a moment after every change and on quit; it is plain TOML keyed by the stable device
+and channel ids that `kwinfo-cli list --ids` prints:
+
+```toml
+[general]
+temperature_unit = "Celsius"
+show_hidden = false
+
+[theme]
+mode = "auto"
+
+[polling]
+interval_ms = 1000
+
+[channels."cpu:0/clock.core0"]
+label = "P-core 0"
+color = "#ff8c00"
+```
+
+A file that cannot be read is kept as `config.toml.bad` and the defaults apply. For a
+throwaway run, point KWinfo at another file; `--interval` and `--theme` override the
+saved values for one run without changing them:
+
+```bash
+cargo run -p kwinfo-app -- --mock --config /tmp/kwinfo-test.toml --theme light
+```
 
 ## Snapshots and replay
 
@@ -84,6 +139,11 @@ variables and what the report contains.
 cargo test --workspace
 ```
 
+This includes headless interaction tests of the window (`crates/kwinfo-app/tests/
+interaction.rs`): context menus, the rename and colour dialogs, the filter, columns,
+collapsing, disabling monitoring, and a restart that must restore everything from
+`config.toml`. kittest checks after every step that each control has an accessible name.
+
 The backend tests parse the fixture trees in `tests/fixtures/`; the complete listing of
 the synthetic i7-8700K fixture is compared with
 `crates/kwinfo-core/tests/expected/synthetic-8700k.txt` (regenerate it with
@@ -102,24 +162,28 @@ Two GPU-backed test suites are ignored by default because CI runners have no GPU
 cargo test -p kwinfo-app --test snapshots -- --ignored
 ```
 
-compares the Sensor Status table against the committed pictures in
-`crates/kwinfo-app/tests/snapshots/` (set `UPDATE_SNAPSHOTS=true` to accept changes), and
+compares the Sensor Status table (default, customised with hidden, renamed, recoloured and
+disabled rows, and with a context menu open, each in both themes) against the committed
+pictures in `crates/kwinfo-app/tests/snapshots/` (set `UPDATE_SNAPSHOTS=true` to accept
+changes), and
 
 ```bash
 cargo test -p kwinfo-app --test preview -- --ignored
 ```
 
-renders the whole window in both themes into `target/preview/*.png` for a quick look.
+renders the whole window into `target/preview/*.png` for a quick look: both themes, the
+settings tabs, the context menu, the filter, the dialogs and the replayed 8700K fixture.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `crates/kwinfo-core` | sensor model, backends, sampler, statistics, history |
+| `crates/kwinfo-core` | sensor model, backends, sampler, statistics, history, settings |
 | `crates/kwinfo-ipc` | message types shared by the app and the privileged helper |
 | `crates/kwinfo-helper` | the privileged helper service (stub in M0) |
 | `crates/kwinfo-app` | the eframe GUI, binary `kwinfo` |
 | `crates/kwinfo-cli` | the command line tool, binary `kwinfo-cli` |
+| `crates/kwinfo-diag` | per-run log files and `kwinfo-cli report` bundles |
 | `packaging/` | desktop file, systemd/D-Bus/polkit files, AppImage script (later milestones) |
 | `tests/fixtures/` | sysfs/procfs trees used by tests and `--replay` |
 

@@ -5,6 +5,7 @@
 //! `gt_{act,cur,max,boost}_freq_mhz`. Busy percentages and GT power need the i915 PMU and
 //! RAPL, which only the privileged helper can read (milestone M4).
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::backend::Backend;
@@ -27,6 +28,8 @@ pub struct IntelGpuBackend {
     root: SysRoot,
     names: PciNames,
     readers: Vec<(ChannelId, PathBuf)>,
+    /// Per reader: disabled by the user, not read. Empty means read everything.
+    skip: Vec<bool>,
 }
 
 impl IntelGpuBackend {
@@ -35,6 +38,7 @@ impl IntelGpuBackend {
             root,
             names: PciNames::default(),
             readers: Vec::new(),
+            skip: Vec::new(),
         }
     }
 }
@@ -81,6 +85,7 @@ impl Backend for IntelGpuBackend {
 
     fn enumerate(&mut self) -> anyhow::Result<Vec<(Device, Vec<Channel>)>> {
         self.readers.clear();
+        self.skip.clear();
         let mut result = Vec::new();
         for gpu in drm::gpus(&self.root, &mut self.names) {
             if gpu.vendor != 0x8086 {
@@ -119,11 +124,22 @@ impl Backend for IntelGpuBackend {
     }
 
     fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
-        for (channel, path) in &self.readers {
+        for (i, (channel, path)) in self.readers.iter().enumerate() {
+            if self.skip.get(i).copied().unwrap_or(false) {
+                continue;
+            }
             let mhz = read_int(path).ok().map(|v| v as f64);
             out.push(Sample::new(channel.clone(), mhz));
         }
         Ok(())
+    }
+
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        self.skip = self
+            .readers
+            .iter()
+            .map(|(channel, _)| disabled.contains(channel))
+            .collect();
     }
 }
 

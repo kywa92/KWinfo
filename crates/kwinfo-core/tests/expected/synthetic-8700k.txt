@@ -6,54 +6,54 @@ CPU [#0]: Intel Core i7-8700K  [cpu:0]  Cpu #0
   coretemp.temp5_input | Core #3 | Temperature | Celsius/1 | 37.0 °C | max 80 | crit 100
   coretemp.temp6_input | Core #4 | Temperature | Celsius/1 | 33.0 °C | max 80 | crit 100
   coretemp.temp7_input | Core #5 | Temperature | Celsius/1 | 36.0 °C | max 80 | crit 100
-  coretemp.temp2_distance | Core #0 Distance to TjMAX | Temperature | Celsius/1 | 65.0 °C
-  coretemp.temp3_distance | Core #1 Distance to TjMAX | Temperature | Celsius/1 | 64.0 °C
-  coretemp.temp4_distance | Core #2 Distance to TjMAX | Temperature | Celsius/1 | 66.0 °C
-  coretemp.temp5_distance | Core #3 Distance to TjMAX | Temperature | Celsius/1 | 63.0 °C
-  coretemp.temp6_distance | Core #4 Distance to TjMAX | Temperature | Celsius/1 | 67.0 °C
-  coretemp.temp7_distance | Core #5 Distance to TjMAX | Temperature | Celsius/1 | 64.0 °C
+  coretemp.temp2_distance | Core #0 Distance to TjMAX | Temperature | Celsius/1 | 65.0 °C | group Distance to TjMAX
+  coretemp.temp3_distance | Core #1 Distance to TjMAX | Temperature | Celsius/1 | 64.0 °C | group Distance to TjMAX
+  coretemp.temp4_distance | Core #2 Distance to TjMAX | Temperature | Celsius/1 | 66.0 °C | group Distance to TjMAX
+  coretemp.temp5_distance | Core #3 Distance to TjMAX | Temperature | Celsius/1 | 63.0 °C | group Distance to TjMAX
+  coretemp.temp6_distance | Core #4 Distance to TjMAX | Temperature | Celsius/1 | 67.0 °C | group Distance to TjMAX
+  coretemp.temp7_distance | Core #5 Distance to TjMAX | Temperature | Celsius/1 | 64.0 °C | group Distance to TjMAX
   coretemp.core_max | Core Max | Temperature | Celsius/1 | 37.0 °C
-  clock.core0 | Core #0 Clock | Clock | MegaHertz/1 | 4,300.0 MHz
-  clock.core1 | Core #1 Clock | Clock | MegaHertz/1 | 4,300.0 MHz
-  clock.core2 | Core #2 Clock | Clock | MegaHertz/1 | 3,800.1 MHz
-  clock.core3 | Core #3 Clock | Clock | MegaHertz/1 | 1,200.5 MHz
-  clock.core4 | Core #4 Clock | Clock | MegaHertz/1 | 4,100.0 MHz
-  clock.core5 | Core #5 Clock | Clock | MegaHertz/1 | 800.0 MHz
-  usage.cpu0 | Core #0 Thread #0 Usage | Usage | Percent/1 | –
-  usage.cpu6 | Core #0 Thread #1 Usage | Usage | Percent/1 | –
-  usage.cpu1 | Core #1 Thread #0 Usage | Usage | Percent/1 | –
-  usage.cpu7 | Core #1 Thread #1 Usage | Usage | Percent/1 | –
-  usage.cpu2 | Core #2 Thread #0 Usage | Usage | Percent/1 | –
-  usage.cpu8 | Core #2 Thread #1 Usage | Usage | Percent/1 | –
-  usage.cpu3 | Core #3 Thread #0 Usage | Usage | Percent/1 | –
-  usage.cpu9 | Core #3 Thread #1 Usage | Usage | Percent/1 | –
-  usage.cpu4 | Core #4 Thread #0 Usage | Usage | Percent/1 | –
-  usage.cpu10 | Core #4 Thread #1 Usage | Usage | Percent/1 | –
-  usage.cpu5 | Core #5 Thread #0 Usage | Usage | Percent/1 | –
-  usage.cpu11 | Core #5 Thread #1 Usage | Usage | Percent/1 | –
+  clock.core0 | Core #0 Clock | Clock | MegaHertz/1 | 4,300.0 MHz | group Core Clocks
+  clock.core1 | Core #1 Clock | Clock | MegaHertz/1 | 4,300.0 MHz | group Core Clocks
+  clock.core2 | Core #2 Clock | Clock | MegaHertz/1 | 3,800.1 MHz | group Core Clocks
+  clock.core3 | Core #3 Clock | Clock | MegaHertz/1 | 1,200.5 MHz | group Core Clocks
+  clock.core4 | Core #4 Clock | Clock | MegaHertz/1 | 4,100.0 MHz | group Core Clocks
+  clock.core5 | Core #5 Clock | Clock | MegaHertz/1 | 800.0 MHz | group Core Clocks
+  usage.cpu0 | Core #0 Thread #0 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu6 | Core #0 Thread #1 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu1 | Core #1 Thread #0 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu7 | Core #1 Thread #1 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu2 | Core #2 Thread #0 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu8 | Core #2 Thread #1 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu3 | Core #3 Thread #0 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu9 | Core #3 Thread #1 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu4 | Core #4 Thread #0 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu10 | Core #4 Thread #1 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu5 | Core #5 Thread #0 Usage | Usage | Percent/1 | – | group Thread Usage
+  usage.cpu11 | Core #5 Thread #1 Usage | Usage | Percent/1 | – | group Thread Usage
   usage.max | Max CPU/Thread Usage | Usage | Percent/1 | –
   usage.total | Total CPU Usage | Usage | Percent/1 | –
-  throttle.core0 | Core #0 Thermal Throttling | Boolean | Bool/0 | No
-  throttle.core1 | Core #1 Thermal Throttling | Boolean | Bool/0 | No
-  throttle.core2 | Core #2 Thermal Throttling | Boolean | Bool/0 | No
-  throttle.core3 | Core #3 Thermal Throttling | Boolean | Bool/0 | No
-  throttle.core4 | Core #4 Thermal Throttling | Boolean | Bool/0 | No
-  throttle.core5 | Core #5 Thermal Throttling | Boolean | Bool/0 | No
-  throttle.package | Package/Ring Thermal Throttling | Boolean | Bool/0 | No
-  ratio.core0 | Core #0 Ratio | Other | Multiplier/1 | 43.0 x
-  ratio.core1 | Core #1 Ratio | Other | Multiplier/1 | 43.0 x
-  ratio.core2 | Core #2 Ratio | Other | Multiplier/1 | 38.0 x
-  ratio.core3 | Core #3 Ratio | Other | Multiplier/1 | 12.0 x
-  ratio.core4 | Core #4 Ratio | Other | Multiplier/1 | 41.0 x
-  ratio.core5 | Core #5 Ratio | Other | Multiplier/1 | 8.0 x
-  cstate.c1 | C1 Residency | Usage | Percent/1 | 0.0 %
-  cstate.c1e | C1E Residency | Usage | Percent/1 | 0.0 %
-  cstate.c3 | C3 Residency | Usage | Percent/1 | 0.0 %
-  cstate.c6 | C6 Residency | Usage | Percent/1 | 0.0 %
-  cstate.c7s | C7s Residency | Usage | Percent/1 | 0.0 %
-  cstate.c8 | C8 Residency | Usage | Percent/1 | 0.0 %
-  cstate.c9 | C9 Residency | Usage | Percent/1 | 0.0 %
-  cstate.c10 | C10 Residency | Usage | Percent/1 | 0.0 %
+  throttle.core0 | Core #0 Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  throttle.core1 | Core #1 Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  throttle.core2 | Core #2 Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  throttle.core3 | Core #3 Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  throttle.core4 | Core #4 Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  throttle.core5 | Core #5 Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  throttle.package | Package/Ring Thermal Throttling | Boolean | Bool/0 | No | group Thermal Throttling
+  ratio.core0 | Core #0 Ratio | Other | Multiplier/1 | 43.0 x | group Core Ratios
+  ratio.core1 | Core #1 Ratio | Other | Multiplier/1 | 43.0 x | group Core Ratios
+  ratio.core2 | Core #2 Ratio | Other | Multiplier/1 | 38.0 x | group Core Ratios
+  ratio.core3 | Core #3 Ratio | Other | Multiplier/1 | 12.0 x | group Core Ratios
+  ratio.core4 | Core #4 Ratio | Other | Multiplier/1 | 41.0 x | group Core Ratios
+  ratio.core5 | Core #5 Ratio | Other | Multiplier/1 | 8.0 x | group Core Ratios
+  cstate.c1 | C1 Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c1e | C1E Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c3 | C3 Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c6 | C6 Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c7s | C7s Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c8 | C8 Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c9 | C9 Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
+  cstate.c10 | C10 Residency | Usage | Percent/1 | 0.0 % | group C-State Residency
 ASUS PRIME Z370-A (Nuvoton NCT6793D)  [hwmon:nct6793:nct6775.656]  Motherboard #0
   temp1_input | SYSTIN | Temperature | Celsius/1 | 31.0 °C
   temp2_input | CPUTIN | Temperature | Celsius/1 | 36.5 °C
@@ -94,11 +94,11 @@ ASUS PRIME Z370-A (Nuvoton NCT6793D)  [hwmon:nct6793:nct6775.656]  Motherboard #
   pwm6 | PWM #6 | Pwm | Percent/1 | 50.2 %
   intrusion0_alarm | Chassis Intrusion | Boolean | Bool/0 | No
   intrusion1_alarm | Chassis Intrusion #1 | Boolean | Bool/0 | Yes
-  in0_alarm | Vcore Alarm | Boolean | Bool/0 | No
-  in2_alarm | AVCC Alarm | Boolean | Bool/0 | No
-  in3_alarm | +3.3V Alarm | Boolean | Bool/0 | No
-  in7_alarm | 3VSB Alarm | Boolean | Bool/0 | No
-  in8_alarm | VBAT Alarm | Boolean | Bool/0 | No
+  in0_alarm | Vcore Alarm | Boolean | Bool/0 | No | group Alarms
+  in2_alarm | AVCC Alarm | Boolean | Bool/0 | No | group Alarms
+  in3_alarm | +3.3V Alarm | Boolean | Bool/0 | No | group Alarms
+  in7_alarm | 3VSB Alarm | Boolean | Bool/0 | No | group Alarms
+  in8_alarm | VBAT Alarm | Boolean | Bool/0 | No | group Alarms
 Memory  [memory]  Memory #0
   used | Physical Memory Used | Capacity | Bytes/1 | 6.0 GB
   available | Physical Memory Available | Capacity | Bytes/1 | 25.3 GB
@@ -114,7 +114,7 @@ Drive: Samsung SSD 970 EVO Plus 1TB  [block:samsung-ssd-970-evo-plus-1tb:3547873
   nvme.temp1_input | Drive Temperature | Temperature | Celsius/1 | 41.9 °C | max 84.85 | crit 84.85
   nvme.temp2_input | Drive Temperature 2 | Temperature | Celsius/1 | 41.9 °C
   nvme.temp3_input | Drive Temperature 3 | Temperature | Celsius/1 | 45.9 °C
-  nvme.temp1_alarm | Drive Temperature Alarm | Boolean | Bool/0 | No
+  nvme.temp1_alarm | Drive Temperature Alarm | Boolean | Bool/0 | No | group Alarms
   activity | Total Activity | Usage | Percent/1 | 0.0 %
   read_rate | Read Rate | Throughput | BytesPerSecond/1 | 0 B/s
   write_rate | Write Rate | Throughput | BytesPerSecond/1 | 0 B/s

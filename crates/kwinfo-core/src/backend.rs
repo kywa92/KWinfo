@@ -1,8 +1,9 @@
 //! The interface every data source implements.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
-use crate::model::{Channel, Device, Sample};
+use crate::model::{Channel, ChannelId, Device, Sample};
 
 /// A source of devices and readings: a sysfs tree, the privileged helper, NVML, or the
 /// mock generator. Backends are owned by the sampler thread and never touch the UI.
@@ -23,5 +24,14 @@ pub trait Backend: Send {
     /// How often to call [`Backend::enumerate`] again. `None` disables rescans.
     fn rescan_every(&self) -> Option<Duration> {
         Some(Duration::from_secs(60))
+    }
+
+    /// The channels the user switched off ("Disable monitoring"). The sampler ignores
+    /// their samples whatever the backend does, so this is purely an optimisation: a
+    /// backend can stop reading them, but must keep reading anything an enabled channel
+    /// is computed from. Called after every [`Backend::enumerate`] and whenever the set
+    /// changes. The default does nothing.
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        let _ = disabled;
     }
 }

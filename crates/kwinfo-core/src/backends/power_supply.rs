@@ -6,6 +6,7 @@
 //! `cycle_count`, `temp`, `manufacturer`, `model_name`; and `online` of the mains
 //! adapter for the "AC Power" row. Mains and USB supplies get no group of their own.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::backend::Backend;
@@ -41,6 +42,8 @@ pub struct PowerSupplyBackend {
     root: SysRoot,
     supplies: Vec<SupplyPlan>,
     mains: Option<PathBuf>,
+    /// Rows disabled by the user, which are not read.
+    disabled: HashSet<ChannelId>,
 }
 
 impl PowerSupplyBackend {
@@ -49,6 +52,7 @@ impl PowerSupplyBackend {
             root,
             supplies: Vec::new(),
             mains: None,
+            disabled: HashSet::new(),
         }
     }
 }
@@ -261,6 +265,9 @@ impl Backend for PowerSupplyBackend {
                 1.0
             };
             for (channel, row) in &supply.rows {
+                if self.disabled.contains(channel) {
+                    continue;
+                }
                 let value = match row {
                     Row::ChargeLevel => read_i64(&dir.join("capacity")).map(|v| v as f64),
                     Row::Voltage => micro(dir, "voltage_now"),
@@ -288,6 +295,10 @@ impl Backend for PowerSupplyBackend {
             }
         }
         Ok(())
+    }
+
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        self.disabled.clone_from(disabled);
     }
 }
 

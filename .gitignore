@@ -6,6 +6,7 @@
 # Snapshot test scratch output (committed snapshots live in tests/snapshots/*.png)
 **/*.new.png
 **/*.diff.png
+**/*.old.png
 
 # Packaging output
 /dist/

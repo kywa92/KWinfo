@@ -5,7 +5,7 @@
 //! live under `devices/virtual`), then every tick `statistics/{rx,tx}_bytes`. Loopback and
 //! virtual interfaces are hidden unless [`NetworkBackend::with_virtual`] asks for them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -27,6 +27,10 @@ struct InterfacePlan {
     upload: ChannelId,
     rx_total: ChannelId,
     tx_total: ChannelId,
+    /// `rx_bytes` feeds only disabled channels and is not read.
+    skip_rx: bool,
+    /// Likewise for `tx_bytes`.
+    skip_tx: bool,
 }
 
 /// See the module documentation.
@@ -57,10 +61,25 @@ impl NetworkBackend {
     /// ([`SysRoot::now`]), which is the recorded time when a recording is replayed.
     pub fn sample_at(&mut self, now: Instant, out: &mut Vec<Sample>) {
         for iface in &self.interfaces {
-            for (path, rate_channel, total_channel, is_rx) in [
-                (&iface.rx_bytes, &iface.download, &iface.rx_total, true),
-                (&iface.tx_bytes, &iface.upload, &iface.tx_total, false),
+            for (path, rate_channel, total_channel, is_rx, skip) in [
+                (
+                    &iface.rx_bytes,
+                    &iface.download,
+                    &iface.rx_total,
+                    true,
+                    iface.skip_rx,
+                ),
+                (
+                    &iface.tx_bytes,
+                    &iface.upload,
+                    &iface.tx_total,
+                    false,
+                    iface.skip_tx,
+                ),
             ] {
+                if skip {
+                    continue;
+                }
                 let bytes = read_u64(path);
                 let rate = bytes.and_then(|b| {
                     self.counters
@@ -119,6 +138,8 @@ impl Backend for NetworkBackend {
                 upload: channels[1].id.clone(),
                 rx_total: channels[2].id.clone(),
                 tx_total: channels[3].id.clone(),
+                skip_rx: false,
+                skip_tx: false,
             });
             result.push((device, channels));
         }
@@ -128,6 +149,21 @@ impl Backend for NetworkBackend {
     fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
         self.sample_at(self.root.now(), out);
         Ok(())
+    }
+
+    /// A byte counter is skipped when both rows it feeds (the rate and the total) are
+    /// disabled; its rate starts afresh when one of them is enabled again.
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        for iface in &mut self.interfaces {
+            iface.skip_rx =
+                disabled.contains(&iface.download) && disabled.contains(&iface.rx_total);
+            iface.skip_tx = disabled.contains(&iface.upload) && disabled.contains(&iface.tx_total);
+            for (skip, is_rx) in [(iface.skip_rx, true), (iface.skip_tx, false)] {
+                if skip {
+                    self.counters.remove(&(iface.name.clone(), is_rx));
+                }
+            }
+        }
     }
 }
 
@@ -194,5 +230,24 @@ mod tests {
         // 1,048,576 bytes in half a second.
         assert_close(get(&values, "download"), 2.0 * 1_048_576.0);
         assert_close(get(&values, "upload"), 0.0);
+    }
+
+    #[test]
+    fn a_counter_is_read_while_any_row_it_feeds_is_enabled() {
+        let mut backend = NetworkBackend::new(fixture_root());
+        backend.enumerate().unwrap();
+        let id = |key: &str| ChannelId::from_raw(format!("net:enp0s31f6/{key}"));
+        backend.set_disabled(&HashSet::from([
+            id("download"),
+            id("total_down"),
+            id("upload"),
+        ]));
+        let mut out = Vec::new();
+        backend.sample_at(Instant::now(), &mut out);
+        let values = sample_map(&out);
+        assert!(!values.contains_key(&id("download")));
+        assert!(!values.contains_key(&id("total_down")));
+        // tx_bytes still feeds the enabled total.
+        assert_close(values[&id("total_up")], 912_345_678.0);
     }
 }

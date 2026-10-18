@@ -7,6 +7,7 @@
 
 pub mod backend;
 pub mod backends;
+pub mod config;
 pub mod format;
 pub mod history;
 pub mod mock;
@@ -19,6 +20,7 @@ pub mod sysroot;
 
 pub use backend::Backend;
 pub use backends::{BackendChoice, BackendSet};
+pub use config::{Config, ConfigFile, Rgb, ThemeMode};
 pub use format::{TemperatureUnit, format_value};
 pub use history::History;
 pub use model::{

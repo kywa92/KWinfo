@@ -4,6 +4,7 @@
 //! is deterministic for a given seed and sample time, which is how snapshot tests get
 //! stable pictures.
 
+use std::collections::HashSet;
 use std::f64::consts::TAU;
 use std::time::{Duration, Instant};
 
@@ -199,7 +200,8 @@ impl Builder {
         );
         for core in 0..6 {
             let key = format!("usage.core{core}");
-            let channel = Channel::new(&id, &key, format!("Core #{core} Usage"), Kind::Usage);
+            let channel = Channel::new(&id, &key, format!("Core #{core} Usage"), Kind::Usage)
+                .with_group("Core Usage");
             self.analog(
                 d,
                 channel,
@@ -212,7 +214,8 @@ impl Builder {
         }
         for core in 0..6 {
             let key = format!("clock.core{core}");
-            let channel = Channel::new(&id, &key, format!("Core #{core} Clock"), Kind::Clock);
+            let channel = Channel::new(&id, &key, format!("Core #{core} Clock"), Kind::Clock)
+                .with_group("Core Clocks");
             let cfg = Analog {
                 base: 4300.0,
                 amplitude: 300.0,
@@ -688,6 +691,8 @@ pub struct MockBackend {
     rng: Rng,
     devices: Vec<(Device, Vec<Channel>)>,
     signals: Vec<Signal>,
+    /// Signals of disabled channels, which are not generated.
+    disabled: HashSet<ChannelId>,
 }
 
 impl MockBackend {
@@ -708,6 +713,7 @@ impl MockBackend {
             rng: builder.rng,
             devices: builder.devices,
             signals: builder.signals,
+            disabled: HashSet::new(),
         }
     }
 
@@ -715,6 +721,9 @@ impl MockBackend {
     /// for a given seed and call sequence, which tests rely on.
     pub fn sample_at(&mut self, t: f64, out: &mut Vec<Sample>) {
         for signal in &mut self.signals {
+            if self.disabled.contains(&signal.channel) {
+                continue;
+            }
             let value = signal.value(t, &mut self.rng);
             out.push(Sample::new(signal.channel.clone(), Some(value)));
         }
@@ -738,6 +747,10 @@ impl Backend for MockBackend {
 
     fn rescan_every(&self) -> Option<Duration> {
         None
+    }
+
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        self.disabled.clone_from(disabled);
     }
 }
 
@@ -772,6 +785,23 @@ mod tests {
                 assert!((0.0..=100.0).contains(&v), "{} = {v}", sample.channel);
             }
         }
+    }
+
+    #[test]
+    fn disabled_channels_are_not_generated() {
+        let mut mock = MockBackend::new(7);
+        let devices = mock.enumerate().unwrap();
+        let clock = devices[0]
+            .1
+            .iter()
+            .find(|c| c.id.key() == "clock.core0")
+            .unwrap();
+        assert_eq!(clock.group.as_deref(), Some("Core Clocks"));
+        mock.set_disabled(&HashSet::from([clock.id.clone()]));
+        let mut out = Vec::new();
+        mock.sample_at(1.0, &mut out);
+        assert!(out.iter().all(|s| s.channel != clock.id));
+        assert!(!out.is_empty());
     }
 
     #[test]

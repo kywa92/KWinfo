@@ -1,7 +1,7 @@
 //! The sampler thread: polls backends on a fixed interval, keeps statistics and history
 //! per channel, and publishes immutable snapshots for the front ends.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -40,6 +40,8 @@ impl Default for SamplerConfig {
 pub struct ChannelSnapshot {
     pub channel: Arc<Channel>,
     pub stats: Stats,
+    /// The channel is not polled ([`Sampler::set_disabled`]); its statistics are empty.
+    pub disabled: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -96,8 +98,12 @@ impl Snapshot {
 
 enum Command {
     SetInterval(Duration),
+    SetDisabled {
+        channels: HashSet<ChannelId>,
+        devices: HashSet<DeviceId>,
+    },
     ResetAll,
-    Reset(ChannelId),
+    Reset(Vec<ChannelId>),
     OnTick(Box<dyn Fn() + Send>),
     Stop,
 }
@@ -152,7 +158,20 @@ impl Sampler {
 
     /// Resets one channel's statistics and clears its history.
     pub fn reset_channel(&self, id: ChannelId) {
-        self.send(Command::Reset(id));
+        self.send(Command::Reset(vec![id]));
+    }
+
+    /// Resets the statistics and history of several channels, e.g. of one device.
+    pub fn reset_channels(&self, ids: impl IntoIterator<Item = ChannelId>) {
+        self.send(Command::Reset(ids.into_iter().collect()));
+    }
+
+    /// Stops polling `channels` and every channel of `devices` ("Disable monitoring"),
+    /// replacing the previous set. Their statistics and history are cleared and stay
+    /// empty until they are enabled again; the backends are told so they can skip the
+    /// reads. Channels that appear later on a disabled device are disabled too.
+    pub fn set_disabled(&self, channels: HashSet<ChannelId>, devices: HashSet<DeviceId>) {
+        self.send(Command::SetDisabled { channels, devices });
     }
 
     /// Registers a callback that runs on the sampler thread after every tick, for
@@ -193,6 +212,7 @@ struct BackendSlot {
 struct ChannelState {
     channel: Arc<Channel>,
     stats: Stats,
+    disabled: bool,
 }
 
 struct DeviceState {
@@ -214,8 +234,14 @@ struct Worker {
     stats_since: Instant,
     next_tick: Instant,
     tick: u64,
+    /// How long the backends took during the last tick.
+    tick_cost: Duration,
     on_tick: Option<Box<dyn Fn() + Send>>,
     scratch: Vec<Sample>,
+    disabled_channels: HashSet<ChannelId>,
+    disabled_devices: HashSet<DeviceId>,
+    /// Every channel not polled, from both sets above; what the backends are told.
+    disabled: HashSet<ChannelId>,
 }
 
 impl Worker {
@@ -242,14 +268,25 @@ impl Worker {
             stats_since: now,
             next_tick: now,
             tick: 0,
+            tick_cost: Duration::ZERO,
             on_tick: None,
             scratch: Vec::new(),
+            disabled_channels: HashSet::new(),
+            disabled_devices: HashSet::new(),
+            disabled: HashSet::new(),
         }
     }
 
     fn run(mut self, rx: Receiver<Command>) {
         self.rescan(true);
-        self.publish(Duration::ZERO);
+        // Commands sent right after start (typically the disabled set) apply before the
+        // first tick reads anything.
+        while let Ok(command) = rx.try_recv() {
+            if !self.handle(command) {
+                return;
+            }
+        }
+        self.publish();
         // Enumeration can take a while on a real machine; start the tick schedule after
         // it, so that the second tick (the first with rates) comes a full interval later.
         self.next_tick = Instant::now();
@@ -284,20 +321,36 @@ impl Worker {
                 self.interval = interval.max(MIN_INTERVAL);
                 self.next_tick = Instant::now();
             }
+            Command::SetDisabled { channels, devices } => {
+                self.disabled_channels = channels;
+                self.disabled_devices = devices;
+                if self.apply_disabled() {
+                    self.tell_backends(None);
+                }
+                self.publish();
+            }
             Command::ResetAll => {
                 for channel in &mut self.channels {
                     channel.stats.reset();
                 }
                 self.stats_since = Instant::now();
-                self.publish(Duration::ZERO);
+                self.publish();
             }
-            Command::Reset(id) => {
-                if let Some(&index) = self.channel_index.get(&id) {
-                    self.channels[index].stats.reset();
-                    if let Some(history) = self.shared.history.lock().get_mut(&id) {
-                        history.clear();
+            Command::Reset(ids) => {
+                let mut history = self.shared.history.lock();
+                let mut any = false;
+                for id in &ids {
+                    if let Some(&index) = self.channel_index.get(id) {
+                        self.channels[index].stats.reset();
+                        if let Some(points) = history.get_mut(id) {
+                            points.clear();
+                        }
+                        any = true;
                     }
-                    self.publish(Duration::ZERO);
+                }
+                drop(history);
+                if any {
+                    self.publish();
                 }
             }
             Command::OnTick(on_tick) => self.on_tick = Some(on_tick),
@@ -328,6 +381,12 @@ impl Worker {
                     }
                 }
                 Err(err) => warn!(backend = name, "enumeration failed: {err:#}"),
+            }
+            // Enumeration rebuilds the backend's read plan; tell it again what to skip.
+            if changed && self.apply_disabled() {
+                self.tell_backends(None);
+            } else {
+                self.tell_backends(Some(i));
             }
         }
         if changed {
@@ -367,11 +426,47 @@ impl Worker {
             self.channels.push(ChannelState {
                 channel: Arc::new(channel),
                 stats: Stats::new(),
+                disabled: false,
             });
             self.devices[d].channels.push(c);
             changed = true;
         }
         changed
+    }
+
+    /// Recomputes which channels are not polled from the user's channel and device sets.
+    /// A channel that gets disabled loses its statistics and history: they would describe
+    /// a past the user chose to stop watching. Returns whether the set changed.
+    fn apply_disabled(&mut self) -> bool {
+        let mut disabled = HashSet::new();
+        let mut history = self.shared.history.lock();
+        for state in &mut self.channels {
+            let now_disabled = self.disabled_channels.contains(&state.channel.id)
+                || self.disabled_devices.contains(&state.channel.device);
+            if now_disabled && !state.disabled {
+                state.stats = Stats::new();
+                if let Some(points) = history.get_mut(&state.channel.id) {
+                    points.clear();
+                }
+            }
+            state.disabled = now_disabled;
+            if now_disabled {
+                disabled.insert(state.channel.id.clone());
+            }
+        }
+        drop(history);
+        let changed = disabled != self.disabled;
+        self.disabled = disabled;
+        changed
+    }
+
+    /// Passes the disabled set to one backend, or to all of them.
+    fn tell_backends(&mut self, only: Option<usize>) {
+        for (i, slot) in self.backends.iter_mut().enumerate() {
+            if only.is_none_or(|o| o == i) {
+                slot.backend.set_disabled(&self.disabled);
+            }
+        }
     }
 
     fn recompute_order(&mut self) {
@@ -405,6 +500,7 @@ impl Worker {
                     }
                     for sample in &scratch {
                         match self.channel_index.get(&sample.channel) {
+                            Some(&c) if self.channels[c].disabled => {}
                             Some(&c) => {
                                 self.channels[c].stats.update(sample.value);
                                 if let Some(h) = history.get_mut(&sample.channel) {
@@ -430,13 +526,14 @@ impl Worker {
         self.scratch = scratch;
         drop(history);
         self.tick += 1;
-        self.publish(start.elapsed());
+        self.tick_cost = start.elapsed();
+        self.publish();
         if let Some(on_tick) = &self.on_tick {
             on_tick();
         }
     }
 
-    fn publish(&self, tick_cost: Duration) {
+    fn publish(&self) {
         let devices = self
             .publish_order
             .iter()
@@ -452,6 +549,7 @@ impl Worker {
                             ChannelSnapshot {
                                 channel: Arc::clone(&cs.channel),
                                 stats: cs.stats,
+                                disabled: cs.disabled,
                             }
                         })
                         .collect(),
@@ -464,7 +562,7 @@ impl Worker {
             taken_at: Instant::now(),
             stats_since: self.stats_since,
             interval: self.interval,
-            tick_cost,
+            tick_cost: self.tick_cost,
             devices,
         };
         self.shared.snapshot.store(Arc::new(snapshot));
@@ -594,5 +692,134 @@ mod tests {
         );
         let snapshot = wait_until(&sampler, |s| s.tick >= 1);
         assert_eq!(snapshot.interval, MIN_INTERVAL);
+    }
+
+    /// Two counting channels on one device; remembers every disabled set it is given.
+    struct Pair {
+        device: Device,
+        channels: [Channel; 2],
+        n: f64,
+        told: Arc<Mutex<Vec<HashSet<ChannelId>>>>,
+    }
+
+    impl Pair {
+        fn new(told: Arc<Mutex<Vec<HashSet<ChannelId>>>>) -> Self {
+            let device = Device::new("test:pair", "Pair", Category::Other);
+            let channels = [
+                Channel::new(&device.id, "a", "A", Kind::Count),
+                Channel::new(&device.id, "b", "B", Kind::Count),
+            ];
+            Self {
+                device,
+                channels,
+                n: 0.0,
+                told,
+            }
+        }
+    }
+
+    impl Backend for Pair {
+        fn name(&self) -> &'static str {
+            "pair"
+        }
+
+        fn enumerate(&mut self) -> anyhow::Result<Vec<(Device, Vec<Channel>)>> {
+            Ok(vec![(self.device.clone(), self.channels.to_vec())])
+        }
+
+        fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
+            self.n += 1.0;
+            for channel in &self.channels {
+                out.push(Sample::new(channel.id.clone(), Some(self.n)));
+            }
+            Ok(())
+        }
+
+        fn rescan_every(&self) -> Option<Duration> {
+            None
+        }
+
+        fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+            self.told.lock().push(disabled.clone());
+        }
+    }
+
+    #[test]
+    fn disabled_channels_are_not_polled_until_enabled_again() {
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let sampler = Sampler::start(vec![Box::new(Pair::new(Arc::clone(&told)))], fast(64));
+        let (a, b) = (
+            ChannelId::from_raw("test:pair/a"),
+            ChannelId::from_raw("test:pair/b"),
+        );
+        let before = wait_until(&sampler, |s| s.tick >= 3);
+        assert!(before.find(&b).unwrap().stats.count() >= 3);
+        assert_eq!(
+            told.lock().first(),
+            Some(&HashSet::new()),
+            "told after enumeration"
+        );
+
+        sampler.set_disabled(HashSet::from([b.clone()]), HashSet::new());
+        let first = wait_until(&sampler, |s| s.find(&b).is_some_and(|c| c.disabled));
+        let later = wait_until(&sampler, |s| s.tick >= first.tick + 3);
+        let entry = later.find(&b).unwrap();
+        assert!(entry.disabled);
+        assert_eq!(
+            entry.stats.count(),
+            0,
+            "statistics are cleared and stay empty"
+        );
+        assert_eq!(entry.stats.current(), None);
+        assert_eq!(sampler.with_history(&b, History::len), Some(0));
+        assert!(!later.find(&a).unwrap().disabled);
+        assert!(later.find(&a).unwrap().stats.count() > before.find(&a).unwrap().stats.count());
+        assert_eq!(told.lock().last(), Some(&HashSet::from([b.clone()])));
+
+        sampler.set_disabled(HashSet::new(), HashSet::new());
+        let enabled = wait_until(&sampler, |s| {
+            s.find(&b)
+                .is_some_and(|c| !c.disabled && c.stats.count() >= 2)
+        });
+        let stats = enabled.find(&b).unwrap().stats;
+        assert!(
+            stats.min().unwrap() > later.tick as f64 - 1.0,
+            "statistics restart from the first sample after enabling"
+        );
+        assert_eq!(told.lock().last(), Some(&HashSet::new()));
+    }
+
+    #[test]
+    fn disabling_a_device_disables_all_its_channels() {
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let sampler = Sampler::start(vec![Box::new(Pair::new(Arc::clone(&told)))], fast(8));
+        wait_until(&sampler, |s| s.tick >= 1);
+        sampler.set_disabled(HashSet::new(), HashSet::from([DeviceId::new("test:pair")]));
+        let snapshot = wait_until(&sampler, |s| s.channels().all(|c| c.disabled));
+        let later = wait_until(&sampler, |s| s.tick >= snapshot.tick + 2);
+        assert!(later.channels().all(|c| c.stats.count() == 0));
+        assert_eq!(
+            told.lock().last(),
+            Some(&HashSet::from([
+                ChannelId::from_raw("test:pair/a"),
+                ChannelId::from_raw("test:pair/b"),
+            ]))
+        );
+    }
+
+    #[test]
+    fn resetting_several_channels_clears_each() {
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let sampler = Sampler::start(vec![Box::new(Pair::new(told))], fast(8));
+        let before = wait_until(&sampler, |s| s.tick >= 4);
+        sampler.reset_channels([
+            ChannelId::from_raw("test:pair/a"),
+            ChannelId::from_raw("test:pair/b"),
+        ]);
+        let after = wait_until(&sampler, |s| {
+            s.channels()
+                .all(|c| c.stats.min().is_some_and(|m| m > before.tick as f64))
+        });
+        assert!(after.channels().all(|c| c.stats.count() < after.tick));
     }
 }

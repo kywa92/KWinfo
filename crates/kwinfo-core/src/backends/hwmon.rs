@@ -17,7 +17,7 @@
 //! configuration), the driver's `_label` files, KWinfo's knowledge of a few chips, and
 //! finally generic names ("Fan #2").
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::backend::Backend;
@@ -491,6 +491,11 @@ pub struct HwmonBackend {
     readers: Vec<Reader>,
     derived: Vec<Derived>,
     values: Vec<Option<f64>>,
+    /// Per reader: not read, because its channel is disabled and no enabled derived
+    /// channel needs it. Empty means read everything.
+    skip: Vec<bool>,
+    /// Per derived channel: not computed, because it is disabled.
+    skip_derived: Vec<bool>,
 }
 
 impl HwmonBackend {
@@ -502,6 +507,8 @@ impl HwmonBackend {
             readers: Vec::new(),
             derived: Vec::new(),
             values: Vec::new(),
+            skip: Vec::new(),
+            skip_derived: Vec::new(),
         }
     }
 
@@ -538,6 +545,8 @@ impl Backend for HwmonBackend {
     fn enumerate(&mut self) -> anyhow::Result<Vec<(Device, Vec<Channel>)>> {
         self.readers.clear();
         self.derived.clear();
+        self.skip.clear();
+        self.skip_derived.clear();
         if let Some(overlay) = &mut self.overlay {
             overlay.refresh();
         }
@@ -667,6 +676,10 @@ impl Backend for HwmonBackend {
 
     fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
         for (i, reader) in self.readers.iter().enumerate() {
+            if self.skip.get(i).copied().unwrap_or(false) {
+                self.values[i] = None;
+                continue;
+            }
             let value = match &reader.from {
                 ReadFrom::File { path, kind } => read_int(path).ok().map(|v| kind.convert(v)),
                 ReadFrom::Overlay { chip, feature } => self
@@ -677,7 +690,10 @@ impl Backend for HwmonBackend {
             self.values[i] = value;
             out.push(Sample::new(reader.channel.clone(), value));
         }
-        for derived in &self.derived {
+        for (i, derived) in self.derived.iter().enumerate() {
+            if self.skip_derived.get(i).copied().unwrap_or(false) {
+                continue;
+            }
             match derived {
                 Derived::Max { channel, inputs } => {
                     let max = inputs
@@ -697,6 +713,32 @@ impl Backend for HwmonBackend {
             }
         }
         Ok(())
+    }
+
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        let mut needed: Vec<bool> = self
+            .readers
+            .iter()
+            .map(|reader| !disabled.contains(&reader.channel))
+            .collect();
+        self.skip_derived = self
+            .derived
+            .iter()
+            .map(|derived| {
+                let (channel, inputs) = match derived {
+                    Derived::Max { channel, inputs } => (channel, inputs.as_slice()),
+                    Derived::Below { channel, input, .. } => (channel, std::slice::from_ref(input)),
+                };
+                let skip = disabled.contains(channel);
+                if !skip {
+                    for &input in inputs {
+                        needed[input] = true;
+                    }
+                }
+                skip
+            })
+            .collect();
+        self.skip = needed.into_iter().map(|n| !n).collect();
     }
 }
 
@@ -809,7 +851,8 @@ impl HwmonBackend {
                     &format!("{key_prefix}{number}_distance"),
                     format!("{label} Distance to TjMAX"),
                     Kind::Temperature,
-                );
+                )
+                .with_group("Distance to TjMAX");
                 self.derived.push(Derived::Below {
                     channel: channel.id.clone(),
                     input: index,
@@ -838,7 +881,8 @@ impl HwmonBackend {
                 &format!("{key_prefix}{file}"),
                 format!("{label} Alarm"),
                 Kind::Boolean,
-            );
+            )
+            .with_group("Alarms");
             // Alarm flags are 0/1 like intrusion flags, so they convert the same way.
             let from = ReadFrom::File {
                 path: chip.attr_dir.join(&file),
@@ -987,6 +1031,56 @@ mod tests {
         assert_close(get("coretemp.temp5_input"), 37.0);
         assert_close(get("coretemp.temp2_distance"), 65.0);
         assert_close(get("coretemp.core_max"), 37.0);
+    }
+
+    #[test]
+    fn disabled_rows_are_not_read_unless_an_enabled_row_needs_them() {
+        let mut backend = HwmonBackend::new(fixture_root());
+        let devices = backend.enumerate().unwrap();
+        let (_, channels) = device(&devices, "cpu:0");
+        assert_eq!(
+            channel(channels, "coretemp.temp2_distance")
+                .group
+                .as_deref(),
+            Some("Distance to TjMAX")
+        );
+        let id = |key: &str| ChannelId::from_raw(format!("cpu:0/{key}"));
+        let sample = |backend: &mut HwmonBackend| {
+            let mut out = Vec::new();
+            backend.sample(&mut out).unwrap();
+            sample_map(&out)
+        };
+
+        // Core #0 is off, but Core Max and Core #0's distance still read it.
+        backend.set_disabled(&HashSet::from([
+            id("coretemp.temp1_input"),
+            id("coretemp.temp2_input"),
+        ]));
+        let values = sample(&mut backend);
+        assert!(!values.contains_key(&id("coretemp.temp1_input")));
+        assert_close(values[&id("coretemp.temp2_input")], 35.0);
+        assert_close(values[&id("coretemp.temp2_distance")], 65.0);
+        assert_close(values[&id("coretemp.core_max")], 37.0);
+
+        // With its dependants off too, Core #0 is no longer read.
+        backend.set_disabled(&HashSet::from([
+            id("coretemp.temp2_input"),
+            id("coretemp.temp2_distance"),
+            id("coretemp.core_max"),
+        ]));
+        let values = sample(&mut backend);
+        for key in [
+            "coretemp.temp2_input",
+            "coretemp.temp2_distance",
+            "coretemp.core_max",
+        ] {
+            assert!(!values.contains_key(&id(key)), "{key} was sampled");
+        }
+        assert_close(values[&id("coretemp.temp3_distance")], 64.0);
+
+        // Enumerating again reads everything until the sampler says otherwise.
+        backend.enumerate().unwrap();
+        assert!(sample(&mut backend).contains_key(&id("coretemp.core_max")));
     }
 
     #[test]

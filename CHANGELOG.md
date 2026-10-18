@@ -43,6 +43,37 @@ All notable changes to KWinfo are documented here. The format follows
   back in a loop with the recorded timing, so usage and rates move as they did.
 - Hand-built `tests/fixtures/synthetic-8700k` fixture with unit tests and a full expected
   listing.
+- The complete Sensor Status window (milestone M2): runs of similar rows nest in
+  collapsible sub-groups (Core Clocks, Thread Usage, C-State Residency, Distance to TjMAX,
+  Alarms, …) whose row shows the members' lowest minimum and highest maximum; painted
+  per-kind row icons and per-category device icons (no `egui-phosphor` release supports
+  egui 0.37); context menus for sensors (Show Graph, which logs until graph windows land
+  in M3, Rename, Hide/Unhide, Custom colour, Disable/Enable monitoring, Reset this sensor,
+  Copy value), devices (collapse, reset, disable/enable monitoring, copy values),
+  sub-groups and the header (column visibility, reset widths); double-click reserved for
+  Show Graph; a Ctrl+F quick filter; `[N value(s) hidden]` and, on Linux, KWinfo's own CPU
+  use in the window title; a "Show hidden sensors" setting that lists hidden rows greyed.
+- Toolbar with painted icons: expand/collapse all, reset, logging (M5), elapsed time,
+  polling period, a helper-status placeholder (M4), filter, settings and quit.
+- Settings dialog tabs: General, Theme, Columns and Hidden sensors (with Unhide and Enable
+  buttons); the Logging, Helper and Alerts tabs say which milestone fills them.
+- Persistent settings in `~/.config/kwinfo/config.toml` (`kwinfo_core::config`): theme,
+  temperature unit, polling period, column visibility and widths, window size, per-device
+  collapsed and disabled state and collapsed sub-groups, and per-sensor hidden, name,
+  colour and disabled state, keyed by the stable ids. Saved a moment after each change and
+  on quit; an unreadable file is kept as `config.toml.bad`. `--config <file>` (or
+  `KWINFO_CONFIG`) selects another file.
+- "Disable monitoring" for sensors and whole devices: the sampler ignores them, clears
+  their statistics and history, and tells the backends through the new
+  `Backend::set_disabled`, so `hwmon`, `cpu`, `intel_gpu`, `block`, `network`,
+  `power_supply` and the mock backend skip the reads (keeping inputs that enabled
+  derived rows such as Core Max need).
+- Custom row colours keep their hue and get their lightness clamped per theme to reach
+  4.5:1 contrast on every row background; kind icons are clamped to 3:1. An "Other
+  colour…" dialog previews a colour in both themes.
+- User actions in the window are logged with `kwinfo_diag::action!`.
+- Headless interaction tests of the window that run with `cargo test`, and snapshot
+  baselines for a customised table and an open context menu in both themes.
 
 ### Changed
 
@@ -53,3 +84,10 @@ All notable changes to KWinfo are documented here. The format follows
 - New units `Wh` and `x` (multiplier); channels carry optional `max`/`crit` limits.
 - Rate-based backends (`cpu`, `block`, `network`) take the time from their `SysRoot`, which
   is the wall clock except while a recording is replayed.
+- Channels carry an optional `group` (sub-group name); the expected 8700K listing shows it.
+  Snapshots flag disabled channels (`ChannelSnapshot::disabled`), and the sampler can
+  reset several channels at once.
+- `--interval` and `--theme` of `kwinfo` now override the saved settings for one run
+  instead of always applying their defaults. `ThemeMode` moved to `kwinfo_core::config`.
+- Labels no longer take clicks for text selection, so a click anywhere on a row reaches
+  the row.

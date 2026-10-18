@@ -1,9 +1,10 @@
 //! Entry point of the `kwinfo` binary.
 
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum};
-use kwinfo_app::app::{self, KwinfoApp};
-use kwinfo_app::theme::ThemeMode;
-use kwinfo_core::BackendChoice;
+use kwinfo_app::app::{self, KwinfoApp, Startup};
+use kwinfo_core::{BackendChoice, ConfigFile, ThemeMode};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -18,16 +19,19 @@ struct Args {
     /// Run the real backends against a captured tree instead of / (the output of
     /// `kwinfo-cli snapshot`, or a test fixture)
     #[arg(long, value_name = "DIR")]
-    replay: Option<std::path::PathBuf>,
+    replay: Option<PathBuf>,
     /// Backend selection through the environment (`KWINFO_BACKEND=mock`)
     #[arg(long, env = "KWINFO_BACKEND", hide = true)]
     backend: Option<String>,
-    /// Polling interval in milliseconds
-    #[arg(long, default_value_t = 1000, value_name = "MS")]
-    interval: u64,
-    /// Theme to start with
-    #[arg(long, value_enum, default_value_t = ThemeArg::Auto)]
-    theme: ThemeArg,
+    /// Polling interval in milliseconds for this run (default: the saved setting)
+    #[arg(long, value_name = "MS")]
+    interval: Option<u64>,
+    /// Theme for this run (default: the saved setting)
+    #[arg(long, value_enum)]
+    theme: Option<ThemeArg>,
+    /// Settings file to use instead of ~/.config/kwinfo/config.toml
+    #[arg(long, value_name = "FILE", env = "KWINFO_CONFIG")]
+    config: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -55,25 +59,47 @@ fn main() -> eframe::Result {
     ));
 
     let args = Args::parse();
-    let choice = match args.replay {
+    let backend = match args.replay {
         Some(dir) => BackendChoice::Replay(dir),
         None if args.mock || args.backend.as_deref() == Some("mock") => BackendChoice::Mock,
         None => BackendChoice::Auto,
     };
-    let theme_mode = ThemeMode::from(args.theme);
-    let interval = args.interval;
+    let config_file = args
+        .config
+        .map(ConfigFile::new)
+        .or_else(ConfigFile::default_location);
+    let (config, warnings) = match &config_file {
+        Some(file) => {
+            tracing::info!("settings: {}", file.path().display());
+            let (config, note) = file.load_or_default();
+            (config, note.into_iter().collect())
+        }
+        None => (
+            kwinfo_core::Config::default(),
+            vec!["No home directory, so the settings will not be saved.".to_string()],
+        ),
+    };
+    let size = config.window.size().unwrap_or(app::DEFAULT_WINDOW_SIZE);
+    let startup = Startup {
+        backend,
+        config,
+        config_file,
+        warnings,
+        interval_ms: args.interval,
+        theme: args.theme.map(ThemeMode::from),
+    };
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::TITLE)
             .with_app_id(app::APP_ID)
-            .with_inner_size([780.0, 720.0])
+            .with_inner_size(size)
             .with_min_inner_size([520.0, 360.0]),
         ..Default::default()
     };
     eframe::run_native(
         app::TITLE,
         options,
-        Box::new(move |cc| Ok(Box::new(KwinfoApp::new(cc, choice, interval, theme_mode)))),
+        Box::new(move |cc| Ok(Box::new(KwinfoApp::new(cc, startup)))),
     )
 }

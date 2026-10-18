@@ -11,7 +11,7 @@
 //! `hwmon` backend files under the same device using [`drives`]. S.M.A.R.T. data needs the
 //! privileged helper.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -248,6 +248,8 @@ struct DiskPlan {
     write_rate: ChannelId,
     read_total: ChannelId,
     write_total: ChannelId,
+    /// Every row of the disk is disabled: its statistics are not read.
+    skip: bool,
 }
 
 /// See the module documentation.
@@ -292,7 +294,7 @@ impl BlockBackend {
             }
         }
 
-        for disk in &self.disks {
+        for disk in self.disks.iter().filter(|disk| !disk.skip) {
             let current = stats.get(disk.name.as_str()).copied().or_else(|| {
                 let text = read_string(&self.root.sys("block").join(&disk.name).join("stat"))?;
                 DiskStats::parse(text.split_ascii_whitespace())
@@ -332,6 +334,26 @@ impl Backend for BlockBackend {
         "block"
     }
 
+    /// One `/proc/diskstats` line feeds all five rows of a disk, so a disk is skipped
+    /// (including its `stat` file fallback) only when all of them are disabled, typically
+    /// with the whole drive; its rates start afresh when it is enabled again.
+    fn set_disabled(&mut self, disabled: &HashSet<ChannelId>) {
+        for disk in &mut self.disks {
+            disk.skip = [
+                &disk.activity,
+                &disk.read_rate,
+                &disk.write_rate,
+                &disk.read_total,
+                &disk.write_total,
+            ]
+            .into_iter()
+            .all(|channel| disabled.contains(channel));
+            if disk.skip {
+                self.counters.remove(&disk.name);
+            }
+        }
+    }
+
     fn enumerate(&mut self) -> anyhow::Result<Vec<(Device, Vec<Channel>)>> {
         self.disks.clear();
         let mut result = Vec::new();
@@ -351,6 +373,7 @@ impl Backend for BlockBackend {
                 write_rate: channels[2].id.clone(),
                 read_total: channels[3].id.clone(),
                 write_total: channels[4].id.clone(),
+                skip: false,
             });
             result.push((drive.device, channels));
         }
@@ -481,6 +504,27 @@ mod tests {
         assert_close(get("activity"), 25.0);
         let sda = &devices[1].0.id;
         assert_close(values[&ChannelId::new(sda, "read_rate")], 0.0);
+    }
+
+    #[test]
+    fn disks_with_every_row_disabled_are_skipped() {
+        let mut backend = BlockBackend::new(fixture_root());
+        let devices = backend.enumerate().unwrap();
+        let (device, channels) = &devices[0];
+        let all: HashSet<ChannelId> = channels.iter().map(|c| c.id.clone()).collect();
+        backend.set_disabled(&all);
+        let mut out = Vec::new();
+        backend.sample_at(Instant::now(), &mut out);
+        assert!(out.iter().all(|s| s.channel.device() != device.id.as_str()));
+        assert!(!out.is_empty(), "the other disk is still read");
+
+        // One enabled row brings the whole disk back.
+        let mut most = all;
+        most.remove(&channels[3].id);
+        backend.set_disabled(&most);
+        let mut out = Vec::new();
+        backend.sample_at(Instant::now(), &mut out);
+        assert!(out.iter().any(|s| s.channel == channels[3].id));
     }
 
     #[test]

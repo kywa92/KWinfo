@@ -78,6 +78,9 @@ fn render(snapshot: &Snapshot) -> String {
             if let Some(crit) = c.limits.crit {
                 write!(out, " | crit {crit}").unwrap();
             }
+            if let Some(group) = &c.group {
+                write!(out, " | group {group}").unwrap();
+            }
             out.push('\n');
         }
     }

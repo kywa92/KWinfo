@@ -6,27 +6,15 @@ use egui::{
     Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle, Theme, ThemePreference, Visuals,
     vec2,
 };
-use kwinfo_core::Kind;
+use kwinfo_core::{Kind, Rgb};
 
-/// The user's setting.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ThemeMode {
-    /// Follow the desktop.
-    #[default]
-    Auto,
-    Dark,
-    Light,
-}
+/// The user's setting (Follow system, Dark or Light); it lives in the configuration.
+pub use kwinfo_core::ThemeMode;
 
-impl ThemeMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            ThemeMode::Auto => "Follow system",
-            ThemeMode::Dark => "Dark",
-            ThemeMode::Light => "Light",
-        }
-    }
-}
+/// Minimum contrast of text against its background (WCAG AA).
+pub const TEXT_CONTRAST: f64 = 4.5;
+/// Minimum contrast of icons and other graphics against their background.
+pub const GRAPHIC_CONTRAST: f64 = 3.0;
 
 /// A resolved palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,6 +148,63 @@ impl ThemeTokens {
         }
     }
 
+    /// The backgrounds a table row's text and icons can sit on: plain, striped, hovered,
+    /// the Current column's tint and the selection.
+    pub fn row_backgrounds(&self) -> [Color32; 5] {
+        [
+            self.table_bg,
+            self.alt_row,
+            self.hover_row,
+            self.current_tint,
+            self.selection_fill,
+        ]
+    }
+
+    /// `color`, with its lightness moved only as far as needed to reach `min_contrast`
+    /// against every row background: lighter in the dark palette, darker in the light
+    /// one. Hue and saturation stay, so a custom colour is recognisably the same in both
+    /// themes (PLAN.md 5.1).
+    pub fn readable(&self, color: Color32, min_contrast: f64) -> Color32 {
+        let backgrounds = self.row_backgrounds();
+        let ok = |c: Color32| {
+            backgrounds
+                .iter()
+                .all(|&bg| contrast(c, bg) >= min_contrast)
+        };
+        if ok(color) {
+            return color;
+        }
+        let (h, s, l) = to_hsl(color);
+        // Lightness only ever moves away from the backgrounds, so `ok` flips once along
+        // the way and a bisection finds the smallest change.
+        let (mut near, mut far) = match self.palette {
+            Palette::Dark => (l, 1.0),
+            Palette::Light => (l, 0.0),
+        };
+        if !ok(from_hsl(h, s, far)) {
+            return from_hsl(h, s, far);
+        }
+        for _ in 0..24 {
+            let mid = (near + far) / 2.0;
+            if ok(from_hsl(h, s, mid)) {
+                far = mid;
+            } else {
+                near = mid;
+            }
+        }
+        from_hsl(h, s, far)
+    }
+
+    /// A user's custom row colour, made readable as text in this palette.
+    pub fn custom_text(&self, rgb: Rgb) -> Color32 {
+        self.readable(Color32::from_rgb(rgb.r, rgb.g, rgb.b), TEXT_CONTRAST)
+    }
+
+    /// The icon colour of a kind of reading: its graph colour, readable as a graphic.
+    pub fn icon_color(&self, kind: Kind) -> Color32 {
+        self.readable(self.graph_color(kind), GRAPHIC_CONTRAST)
+    }
+
     pub fn graph_color(&self, kind: Kind) -> Color32 {
         match kind {
             Kind::Temperature => self.graph.temperature,
@@ -241,6 +286,9 @@ pub fn install(ctx: &egui::Context) {
     ctx.set_visuals_of(Theme::Light, LIGHT.visuals());
     for theme in [Theme::Dark, Theme::Light] {
         ctx.style_mut_of(theme, |style| {
+            // Rows react to clicks anywhere, so labels must not swallow them for text
+            // selection; values are copied through the context menu instead.
+            style.interaction.selectable_labels = false;
             style.spacing.item_spacing = vec2(6.0, 3.0);
             style.spacing.button_padding = vec2(8.0, 3.0);
             style.text_styles.insert(
@@ -266,27 +314,67 @@ pub fn install(ctx: &egui::Context) {
     }
 }
 
+/// WCAG relative luminance of an sRGB colour.
+pub fn luminance(c: Color32) -> f64 {
+    let channel = |v: u8| {
+        let s = f64::from(v) / 255.0;
+        if s <= 0.039_28 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+}
+
+/// WCAG contrast ratio between two colours, from 1 to 21.
+pub fn contrast(a: Color32, b: Color32) -> f64 {
+    let (la, lb) = (luminance(a), luminance(b));
+    let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// Hue (0–1), saturation and lightness of an opaque colour.
+fn to_hsl(c: Color32) -> (f64, f64, f64) {
+    let [r, g, b] = [c.r(), c.g(), c.b()].map(|v| f64::from(v) / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    let d = max - min;
+    if d == 0.0 {
+        return (0.0, 0.0, l);
+    }
+    let s = d / (1.0 - (2.0 * l - 1.0).abs());
+    let h = if max == r {
+        ((g - b) / d).rem_euclid(6.0)
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h / 6.0, s, l)
+}
+
+fn from_hsl(h: f64, s: f64, l: f64) -> Color32 {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let h6 = h * 6.0;
+    let x = c * (1.0 - (h6.rem_euclid(2.0) - 1.0).abs());
+    let (r, g, b) = match h6 as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    let byte = |v: f64| ((v + m).clamp(0.0, 1.0) * 255.0).round() as u8;
+    Color32::from_rgb(byte(r), byte(g), byte(b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn luminance(c: Color32) -> f64 {
-        let channel = |v: u8| {
-            let s = f64::from(v) / 255.0;
-            if s <= 0.039_28 {
-                s / 12.92
-            } else {
-                ((s + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
-    }
-
-    fn contrast(a: Color32, b: Color32) -> f64 {
-        let (la, lb) = (luminance(a), luminance(b));
-        let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
-        (hi + 0.05) / (lo + 0.05)
-    }
 
     #[test]
     fn text_meets_contrast_in_both_palettes() {
@@ -308,6 +396,79 @@ mod tests {
                     "{:?} secondary text on {bg:?}",
                     tokens.palette
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn hsl_round_trips() {
+        for c in [
+            rgb(0xff8c00),
+            rgb(0x0a64c2),
+            rgb(0x808080),
+            rgb(0x000000),
+            rgb(0xffffff),
+            rgb(0xb22222),
+            rgb(0x2ea8a0),
+        ] {
+            let (h, s, l) = to_hsl(c);
+            assert_eq!(from_hsl(h, s, l), c);
+        }
+    }
+
+    #[test]
+    fn custom_colours_stay_readable_in_both_palettes() {
+        // A spread of hues and lightnesses, including the extremes.
+        let mut samples = vec![rgb(0x000000), rgb(0xffffff), rgb(0x0000ff), rgb(0xffff00)];
+        for h in 0..12 {
+            for l in [0.1, 0.3, 0.5, 0.7, 0.9] {
+                samples.push(from_hsl(f64::from(h) / 12.0, 0.85, l));
+            }
+        }
+        for tokens in [&DARK, &LIGHT] {
+            for &c in &samples {
+                let text = tokens.custom_text(Rgb::new(c.r(), c.g(), c.b()));
+                for bg in tokens.row_backgrounds() {
+                    assert!(
+                        contrast(text, bg) >= TEXT_CONTRAST - 0.01,
+                        "{:?}: {c:?} became {text:?}, {:.2}:1 on {bg:?}",
+                        tokens.palette,
+                        contrast(text, bg)
+                    );
+                }
+            }
+        }
+        // A colour that is already readable is left alone.
+        assert_eq!(DARK.custom_text(Rgb::new(0xff, 0x8c, 0x00)), rgb(0xff8c00));
+        assert_eq!(LIGHT.custom_text(Rgb::new(0x0a, 0x64, 0xc2)), rgb(0x0a64c2));
+        // Orange is too light for white: it gets darker but stays orange.
+        let orange = LIGHT.custom_text(Rgb::new(0xff, 0x8c, 0x00));
+        assert!(luminance(orange) < luminance(rgb(0xff8c00)));
+        let (h, _, _) = to_hsl(orange);
+        assert!((h - to_hsl(rgb(0xff8c00)).0).abs() < 0.02, "hue kept");
+    }
+
+    #[test]
+    fn kind_icons_reach_graphic_contrast() {
+        let kinds = [
+            Kind::Temperature,
+            Kind::Voltage,
+            Kind::Power,
+            Kind::Fan,
+            Kind::Usage,
+            Kind::Clock,
+            Kind::Other,
+        ];
+        for tokens in [&DARK, &LIGHT] {
+            for kind in kinds {
+                let color = tokens.icon_color(kind);
+                for bg in tokens.row_backgrounds() {
+                    assert!(
+                        contrast(color, bg) >= GRAPHIC_CONTRAST - 0.01,
+                        "{:?} {kind:?} icon on {bg:?}",
+                        tokens.palette
+                    );
+                }
             }
         }
     }
