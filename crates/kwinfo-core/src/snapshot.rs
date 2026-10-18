@@ -151,6 +151,20 @@ const DMI_FILES: &[&str] = &[
 /// be empty, and writes a manifest describing what was scrubbed and what could not be
 /// read.
 pub fn capture(source: &SysRoot, out: &Path) -> anyhow::Result<SnapshotReport> {
+    capture_tracked(source, out).map(|captured| captured.report)
+}
+
+/// A finished capture and what a recording needs to go on from it.
+pub(crate) struct Captured {
+    pub report: SnapshotReport,
+    /// Every file copied, relative to the root and free of symlinks.
+    pub files: Vec<PathBuf>,
+    /// The scrubber, whose placeholders later frames keep using.
+    pub scrubber: Scrubber,
+}
+
+/// [`capture`], keeping the list of copied files and the scrubber.
+pub(crate) fn capture_tracked(source: &SysRoot, out: &Path) -> anyhow::Result<Captured> {
     if !source.sys("").is_dir() || !source.proc("").is_dir() {
         bail!(
             "{} has no sys/ and proc/ directories; snapshots are taken on Linux",
@@ -173,13 +187,23 @@ pub fn capture(source: &SysRoot, out: &Path) -> anyhow::Result<SnapshotReport> {
         report: SnapshotReport::default(),
         scrubber: Scrubber::default(),
         made: HashSet::new(),
+        copied: Vec::new(),
         pci_ids: BTreeSet::new(),
     };
     mirror.capture_all(source);
     mirror.write_pci_ids(source)?;
-    let report = mirror.report;
+    let Mirror {
+        report,
+        scrubber,
+        copied,
+        ..
+    } = mirror;
     write_manifest(source, out, &report)?;
-    Ok(report)
+    Ok(Captured {
+        report,
+        files: copied,
+        scrubber,
+    })
 }
 
 struct Mirror {
@@ -189,6 +213,8 @@ struct Mirror {
     scrubber: Scrubber,
     /// Output paths already written, files and links alike.
     made: HashSet<PathBuf>,
+    /// Source files copied, relative to the root and free of symlinks.
+    copied: Vec<PathBuf>,
     /// `(vendor, device)` of every PCI device copied, for the pci.ids excerpt.
     pci_ids: BTreeSet<(u32, u32)>,
 }
@@ -401,7 +427,10 @@ impl Mirror {
             let _ = fs::create_dir_all(parent);
         }
         match fs::write(&dest, data) {
-            Ok(()) => self.report.files += 1,
+            Ok(()) => {
+                self.report.files += 1;
+                self.copied.push(real);
+            }
             Err(err) => self
                 .report
                 .warnings
@@ -512,7 +541,7 @@ impl Mirror {
     }
 }
 
-enum Scrubbed {
+pub(crate) enum Scrubbed {
     Kept(Vec<u8>),
     Changed(Vec<u8>),
     Dropped,
@@ -520,7 +549,7 @@ enum Scrubbed {
 
 /// Replaces identifiers with placeholders, consistently across files.
 #[derive(Default)]
-struct Scrubber {
+pub(crate) struct Scrubber {
     placeholders: HashMap<String, String>,
 }
 
@@ -533,7 +562,8 @@ impl Scrubber {
             .clone()
     }
 
-    fn scrub(&mut self, rel: &Path, data: Vec<u8>) -> Scrubbed {
+    /// What to store for the file at `rel` (relative to the root) with contents `data`.
+    pub(crate) fn scrub(&mut self, rel: &Path, data: Vec<u8>) -> Scrubbed {
         let name = rel
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())

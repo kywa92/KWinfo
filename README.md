@@ -53,8 +53,17 @@ cargo run -p kwinfo-app -- --replay tests/fixtures/synthetic-8700k
 cargo run -p kwinfo-cli -- list --replay tests/fixtures/synthetic-8700k
 ```
 
-A replayed tree is static, so usage and rate rows stay empty or at zero; temperatures,
-voltages, fans and clocks show their captured values.
+A snapshot is static, so usage and rate rows stay empty or at zero; temperatures,
+voltages, fans and clocks show their captured values. `kwinfo-cli record` takes a
+snapshot and then records every value that changes, frame by frame:
+
+```bash
+cargo run --release -p kwinfo-cli --no-default-features -- record --duration 2m --out my-machine
+```
+
+`--replay` plays a recording back one frame per polling tick and starts over at the end.
+Rates and usage come out as recorded whatever the polling interval, because the backends
+take the recorded time of each frame rather than the wall clock.
 
 ## Testing
 

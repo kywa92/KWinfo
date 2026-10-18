@@ -268,7 +268,8 @@ impl BlockBackend {
         }
     }
 
-    /// One sampling pass at an explicit time; [`Backend::sample`] passes `Instant::now()`.
+    /// One sampling pass at an explicit time; [`Backend::sample`] passes the root's clock
+    /// ([`SysRoot::now`]), which is the recorded time when a recording is replayed.
     pub fn sample_at(&mut self, now: Instant, out: &mut Vec<Sample>) {
         let mut stats: HashMap<&str, DiskStats> = HashMap::new();
         let have_diskstats = read_into(&self.root.proc("diskstats"), &mut self.buf).is_ok();
@@ -357,7 +358,7 @@ impl Backend for BlockBackend {
     }
 
     fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
-        self.sample_at(Instant::now(), out);
+        self.sample_at(self.root.now(), out);
         Ok(())
     }
 }

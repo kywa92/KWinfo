@@ -21,6 +21,8 @@ anyhow.workspace = true
 arc-swap.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
+# The private working copy a replayed recording is played into.
+tempfile.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -31,4 +33,3 @@ workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
-tempfile.workspace = true

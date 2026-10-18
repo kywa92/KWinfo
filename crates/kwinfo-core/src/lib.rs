@@ -11,6 +11,7 @@ pub mod format;
 pub mod history;
 pub mod mock;
 pub mod model;
+pub mod recording;
 pub mod sampler;
 pub mod snapshot;
 pub mod stats;

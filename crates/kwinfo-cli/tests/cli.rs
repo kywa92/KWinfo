@@ -98,3 +98,31 @@ fn snapshot_round_trips_and_refuses_to_overwrite() {
     assert!(!again.status.success());
     assert!(String::from_utf8_lossy(&again.stderr).contains("not empty"));
 }
+
+#[test]
+fn record_writes_a_replayable_recording() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("recording");
+    let report = stdout(&cli(&[
+        "record",
+        "--root",
+        fixture().to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--duration",
+        "1s",
+        "--interval",
+        "250",
+    ]));
+    // Frame 0 and one frame per 250 ms.
+    assert!(report.contains("Recorded 5 frames"), "{report}");
+    let recording = std::fs::read_to_string(out.join("kwinfo-recording.txt")).unwrap();
+    assert!(recording.starts_with("kwinfo-recording 1\ninterval-us 250000\n"));
+    assert!(recording.contains("\nframe 4 "), "{recording}");
+
+    let replayed = stdout(&cli(&["list", "--replay", out.to_str().unwrap()]));
+    assert!(replayed.contains("9 devices, 137 channels"), "{replayed}");
+
+    let bad = cli(&["record", "--out", "x", "--interval", "5"]);
+    assert!(!bad.status.success(), "intervals below 50 ms are refused");
+}

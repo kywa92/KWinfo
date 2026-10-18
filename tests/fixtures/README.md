@@ -48,3 +48,17 @@ Before capturing, make sure the Super I/O driver is loaded (`sensors` lists an `
 or `it87xx` chip; if not, run `sudo sensors-detect`). Saving `sensors -u` output next to
 the snapshot (`sensors -u > tests/fixtures/8700k-z370/sensors-u.txt`) records libsensors'
 own view of the chips for later comparison.
+
+## Recordings
+
+`kwinfo-cli record` writes a snapshot plus `kwinfo-recording.txt`, the values that change
+over time (frame 0 holds all of them, later frames only the ones that moved). Replaying it
+shows live-looking usage, rates and temperatures. Two minutes at one frame per second come
+to a few megabytes on a desktop, mostly idle-state times, hwmon readings and `/proc/stat`:
+
+```bash
+cargo run --release -p kwinfo-cli --no-default-features -- record --duration 2m --out ~/kwinfo-8700k-load
+```
+
+Recordings are for looking at the GUI and for bug reports; tests build their own small
+recordings from `synthetic-8700k`.

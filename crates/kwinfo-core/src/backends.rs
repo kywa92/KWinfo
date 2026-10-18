@@ -24,6 +24,7 @@ pub(crate) use pci::{PCI_IDS_PATHS, is_pci_address};
 
 use crate::backend::Backend;
 use crate::mock::MockBackend;
+use crate::recording;
 use crate::sysroot::SysRoot;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,7 +34,8 @@ pub enum BackendChoice {
     /// The synthetic backend, for development and tests.
     Mock,
     /// The real Linux backends, reading a captured tree (`kwinfo-cli snapshot` output or a
-    /// test fixture) instead of `/`. Works on every OS.
+    /// test fixture) instead of `/`, or playing a `kwinfo-cli record` recording back.
+    /// Works on every OS.
     Replay(PathBuf),
 }
 
@@ -48,6 +50,29 @@ impl BackendSet {
         let mut notes = Vec::new();
         let backends: Vec<Box<dyn Backend>> = match choice {
             BackendChoice::Mock => vec![Box::new(MockBackend::new(0x5eed))],
+            BackendChoice::Replay(dir) if recording::is_recording(&dir) => {
+                match recording::Playback::open(&dir) {
+                    Ok((playback, root)) => {
+                        notes.push(format!(
+                            "Replaying a recording of {} frames from {}.",
+                            playback.frame_count(),
+                            dir.display()
+                        ));
+                        // First, so that every tick's frame is in place before the
+                        // backends read it.
+                        let mut backends: Vec<Box<dyn Backend>> = vec![Box::new(playback)];
+                        backends.extend(linux_backends(&root, None));
+                        backends
+                    }
+                    Err(err) => {
+                        notes.push(format!(
+                            "Cannot replay the recording in {}: {err:#}",
+                            dir.display()
+                        ));
+                        Vec::new()
+                    }
+                }
+            }
             BackendChoice::Replay(dir) => {
                 let root = SysRoot::new(&dir);
                 if !root.sys("").is_dir() && !root.proc("").is_dir() {
@@ -137,26 +162,9 @@ pub(crate) mod test_support {
     /// tests that change counters between two samples.
     pub fn fixture_copy() -> (tempfile::TempDir, SysRoot) {
         let dir = tempfile::tempdir().expect("temporary directory");
-        copy_tree(&synthetic_8700k(), dir.path());
+        crate::recording::copy_tree(&synthetic_8700k(), dir.path()).expect("copying the fixture");
         let root = SysRoot::new(dir.path());
         (dir, root)
-    }
-
-    fn copy_tree(from: &Path, to: &Path) {
-        fs::create_dir_all(to).unwrap();
-        for entry in fs::read_dir(from).unwrap() {
-            let entry = entry.unwrap();
-            let kind = entry.file_type().unwrap();
-            let dest = to.join(entry.file_name());
-            if kind.is_symlink() {
-                let target = fs::read_link(entry.path()).unwrap();
-                std::os::unix::fs::symlink(target, &dest).unwrap();
-            } else if kind.is_dir() {
-                copy_tree(&entry.path(), &dest);
-            } else {
-                fs::copy(entry.path(), &dest).unwrap();
-            }
-        }
     }
 
     pub fn write(root: &SysRoot, rel: &str, contents: &str) {

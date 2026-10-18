@@ -53,7 +53,8 @@ impl NetworkBackend {
         self
     }
 
-    /// One sampling pass at an explicit time; [`Backend::sample`] passes `Instant::now()`.
+    /// One sampling pass at an explicit time; [`Backend::sample`] passes the root's clock
+    /// ([`SysRoot::now`]), which is the recorded time when a recording is replayed.
     pub fn sample_at(&mut self, now: Instant, out: &mut Vec<Sample>) {
         for iface in &self.interfaces {
             for (path, rate_channel, total_channel, is_rx) in [
@@ -125,7 +126,7 @@ impl Backend for NetworkBackend {
     }
 
     fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
-        self.sample_at(Instant::now(), out);
+        self.sample_at(self.root.now(), out);
         Ok(())
     }
 }

@@ -34,6 +34,9 @@ All notable changes to KWinfo are documented here. The format follows
   `/proc` with serial numbers, WWNs and MAC addresses scrubbed.
 - `--replay <dir>` for `kwinfo` and `kwinfo-cli list`: runs the real backends against a
   captured tree. `kwinfo-cli list --ids` shows device and channel ids.
+- `kwinfo-cli record --duration <time> --interval <ms> --out <dir>`: a snapshot plus every
+  changing value frame by frame (`kwinfo-recording.txt`). `--replay` plays recordings
+  back in a loop with the recorded timing, so usage and rates move as they did.
 - Hand-built `tests/fixtures/synthetic-8700k` fixture with unit tests and a full expected
   listing.
 
@@ -44,3 +47,5 @@ All notable changes to KWinfo are documented here. The format follows
 - The sampler schedules its first tick after the initial enumeration, so the second tick
   (the first with rates) comes a full interval later.
 - New units `Wh` and `x` (multiplier); channels carry optional `max`/`crit` limits.
+- Rate-based backends (`cpu`, `block`, `network`) take the time from their `SysRoot`, which
+  is the wall clock except while a recording is replayed.

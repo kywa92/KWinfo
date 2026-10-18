@@ -282,7 +282,8 @@ impl CpuBackend {
         }
     }
 
-    /// One sampling pass at an explicit time; [`Backend::sample`] passes `Instant::now()`.
+    /// One sampling pass at an explicit time; [`Backend::sample`] passes the root's clock
+    /// ([`SysRoot::now`]), which is the recorded time when a recording is replayed.
     /// Tests use it to control the interval between two readings.
     pub fn sample_at(&mut self, now: Instant, out: &mut Vec<Sample>) {
         let stat_ok = read_into(&self.root.proc("stat"), &mut self.stat_buf).is_ok();
@@ -564,7 +565,7 @@ impl Backend for CpuBackend {
     }
 
     fn sample(&mut self, out: &mut Vec<Sample>) -> anyhow::Result<()> {
-        self.sample_at(Instant::now(), out);
+        self.sample_at(self.root.now(), out);
         Ok(())
     }
 }

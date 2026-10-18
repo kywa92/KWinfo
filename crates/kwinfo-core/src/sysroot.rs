@@ -4,16 +4,24 @@
 //! Every backend takes a [`SysRoot`] and only reads `<root>/sys/...`, `<root>/proc/...`
 //! and the PCI name database under `<root>/usr/share`, so the same parsers run on Linux,
 //! in unit tests on any OS, and in `--replay` mode. Nothing here writes or runs commands.
+//!
+//! The root also says what time it is ([`SysRoot::now`]): the wall clock, except while a
+//! recording is replayed, when it is the time the current frame was recorded at.
 
 use std::cmp::Ordering;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{self, AtomicU64};
+use std::time::{Duration, Instant};
 
 /// The root of a Linux file system tree, `/` on the live system.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct SysRoot {
     root: PathBuf,
+    /// Set while a recording is replayed from this tree.
+    clock: Option<Arc<ReplayClock>>,
 }
 
 impl SysRoot {
@@ -21,6 +29,7 @@ impl SysRoot {
     pub fn host() -> Self {
         Self {
             root: PathBuf::from("/"),
+            clock: None,
         }
     }
 
@@ -29,7 +38,23 @@ impl SysRoot {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
         let root = fs::canonicalize(&root).unwrap_or(root);
-        Self { root }
+        Self { root, clock: None }
+    }
+
+    /// Makes [`SysRoot::now`] follow a replayed recording.
+    pub(crate) fn with_clock(mut self, clock: Arc<ReplayClock>) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
+    /// The time readings from this tree are taken at. Backends that turn counters into
+    /// rates use it instead of `Instant::now()`, so that a replayed recording yields the
+    /// recorded rates whatever the polling interval of the replay.
+    pub fn now(&self) -> Instant {
+        match &self.clock {
+            Some(clock) => clock.now(),
+            None => Instant::now(),
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -78,6 +103,33 @@ impl SysRoot {
     /// `path` relative to the root, e.g. `sys/devices/platform/coretemp.0`.
     pub fn relative<'a>(&self, path: &'a Path) -> Option<&'a Path> {
         path.strip_prefix(&self.root).ok()
+    }
+}
+
+/// The recorded time of the frame being replayed, shared between the replay driver,
+/// which sets it before every sample, and the roots of the backends, which read it.
+#[derive(Debug)]
+pub(crate) struct ReplayClock {
+    start: Instant,
+    offset_us: AtomicU64,
+}
+
+impl ReplayClock {
+    pub(crate) fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            offset_us: AtomicU64::new(0),
+        }
+    }
+
+    /// Moves the clock to `offset` after the start of the replay.
+    pub(crate) fn set(&self, offset: Duration) {
+        let micros = u64::try_from(offset.as_micros()).unwrap_or(u64::MAX);
+        self.offset_us.store(micros, atomic::Ordering::Release);
+    }
+
+    pub(crate) fn now(&self) -> Instant {
+        self.start + Duration::from_micros(self.offset_us.load(atomic::Ordering::Acquire))
     }
 }
 
@@ -335,5 +387,19 @@ mod tests {
         let escape = root.sys("class/hwmon/hwmon5");
         std::os::unix::fs::symlink("../../../../../../../../../../etc", &escape).unwrap();
         assert_eq!(root.resolve(&escape), None);
+    }
+
+    #[test]
+    fn replayed_roots_tell_the_recorded_time() {
+        let clock = Arc::new(ReplayClock::new());
+        let root = SysRoot::new("/tmp").with_clock(Arc::clone(&clock));
+        let start = root.now();
+        clock.set(Duration::from_millis(1500));
+        assert_eq!(root.now() - start, Duration::from_millis(1500));
+        assert_eq!(root.clone().now(), root.now(), "clones share the clock");
+
+        let live = SysRoot::host();
+        let before = Instant::now();
+        assert!(live.now() >= before);
     }
 }

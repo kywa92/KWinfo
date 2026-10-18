@@ -159,6 +159,17 @@ fn parse_attribute(name: &str) -> Option<(SensorType, u32, &str)> {
     Some((kind, number.parse().ok()?, item))
 }
 
+/// Whether `name` is a hwmon attribute holding a reading rather than a label or limit:
+/// `temp1_input`, `power1_average`, `pwm2`, `in3_alarm`, `intrusion0_alarm`. Recordings
+/// re-read these on every frame.
+pub(crate) fn is_reading_attribute(name: &str) -> bool {
+    match parse_attribute(name) {
+        Some((SensorType::Pwm, _, item)) => item.is_empty(),
+        Some((_, _, item)) => matches!(item, "input" | "average" | "alarm"),
+        None => false,
+    }
+}
+
 /// Reads the features of a chip, ordered by type then number.
 fn read_features(attr_dir: &Path) -> BTreeMap<(SensorType, u32), Feature> {
     let mut features: BTreeMap<(SensorType, u32), Feature> = BTreeMap::new();
