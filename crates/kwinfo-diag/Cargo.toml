@@ -1,0 +1,20 @@
+[package]
+name = "kwinfo-diag"
+description = "Diagnostic logging and report bundles for every KWinfo binary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+directories = "6.0"
+kwinfo-core.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

@@ -927,6 +927,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "directories"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16f5094c54661b38d03bd7e50df373292118db60b585c08a411c6d840017fe7d"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab"
+dependencies = [
+ "libc",
+ "option-ext",
+ "redox_users",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2059,8 +2080,8 @@ dependencies = [
  "egui_extras",
  "egui_kittest",
  "kwinfo-core",
+ "kwinfo-diag",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2070,8 +2091,8 @@ dependencies = [
  "anyhow",
  "clap",
  "kwinfo-core",
+ "kwinfo-diag",
  "tempfile",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2080,12 +2101,25 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "directories",
  "lm-sensors",
  "parking_lot",
  "serde",
  "serde_json",
  "tempfile",
+ "toml",
  "tracing",
+]
+
+[[package]]
+name = "kwinfo-diag"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "kwinfo-core",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2093,6 +2127,7 @@ name = "kwinfo-helper"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "kwinfo-diag",
  "kwinfo-ipc",
 ]
 
@@ -2769,6 +2804,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "option-ext"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
 name = "orbclient"
 version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3270,6 +3311,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "580c875845b41ecb1564ad1ae4703044cef774145e3d7a94dc2b3fa7c97868fd"
 dependencies = [
  "bitflags 2.13.2",
+]
+
+[[package]]
+name = "redox_users"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60dc65c0ff1a7ae1294b0c67b9f14baf70b644404010370171787bfac1038fc0"
+dependencies = [
+ "libredox",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3868,10 +3919,12 @@ version = "1.1.8+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20489e00e4d8741d6be680764cc12e270655e375a20d1011e844a9c3379e678d"
 dependencies = [
+ "indexmap",
  "serde_core",
  "serde_spanned",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 
@@ -3904,6 +3957,12 @@ checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
 dependencies = [
  "winnow",
 ]
+
+[[package]]
+name = "toml_writer"
+version = "1.1.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
 
 [[package]]
 name = "tracing"

@@ -22,7 +22,7 @@ libsensors = ["kwinfo-core/libsensors"]
 anyhow.workspace = true
 clap.workspace = true
 kwinfo-core.workspace = true
-tracing-subscriber.workspace = true
+kwinfo-diag = { path = "../kwinfo-diag" }
 
 [dev-dependencies]
 tempfile.workspace = true

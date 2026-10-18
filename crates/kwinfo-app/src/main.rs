@@ -4,7 +4,6 @@ use clap::{Parser, ValueEnum};
 use kwinfo_app::app::{self, KwinfoApp};
 use kwinfo_app::theme::ThemeMode;
 use kwinfo_core::BackendChoice;
-use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -49,11 +48,11 @@ impl From<ThemeArg> for ThemeMode {
 }
 
 fn main() -> eframe::Result {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_env("KWINFO_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    // Stderr plus a per-run log file; see the kwinfo-diag crate. Kept alive until exit.
+    let _diag = kwinfo_diag::init(kwinfo_diag::DiagConfig::new(
+        "kwinfo",
+        env!("CARGO_PKG_VERSION"),
+    ));
 
     let args = Args::parse();
     let choice = match args.replay {

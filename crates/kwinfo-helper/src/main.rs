@@ -29,6 +29,10 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    let _diag = kwinfo_diag::init(kwinfo_diag::DiagConfig::new(
+        "kwinfo-helper",
+        env!("CARGO_PKG_VERSION"),
+    ));
     let args = Args::parse();
     let what = match args.command {
         Command::Serve => "serve",

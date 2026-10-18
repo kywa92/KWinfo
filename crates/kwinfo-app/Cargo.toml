@@ -30,8 +30,8 @@ eframe.workspace = true
 egui.workspace = true
 egui_extras.workspace = true
 kwinfo-core.workspace = true
+kwinfo-diag = { path = "../kwinfo-diag" }
 tracing.workspace = true
-tracing-subscriber.workspace = true
 
 [dev-dependencies]
 egui_kittest.workspace = true
