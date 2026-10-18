@@ -1,0 +1,10 @@
+#
+#	List of PCI ID's (excerpt for the synthetic-8700k fixture)
+#
+144d  Samsung Electronics Co Ltd
+	a808  NVMe SSD Controller SM981/PM981/PM983
+8086  Intel Corporation
+	15b8  Ethernet Connection (2) I219-V
+	3e92  CoffeeLake-S GT2 [UHD Graphics 630]
+		1043 8694  PRIME Z370-A
+	a282  200 Series PCH SATA controller [AHCI mode]

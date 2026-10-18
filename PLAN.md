@@ -92,7 +92,7 @@ KWinfo/
 
 ```rust
 pub struct DeviceId(String);   // stable across reboots, e.g. "cpu:0", "hwmon:nct6775:nct6775.656",
-                               // "drm:0000:00:02.0", "block:nvme0n1:<serial>"
+                               // "drm:0000:00:02.0", "block:<model>:<hash of WWID or serial>"
 pub struct ChannelId(String);  // "<device>/<channel>", e.g. "hwmon:coretemp:coretemp.0/temp1_input"
 
 pub enum Kind { Temperature, Voltage, Current, Power, Energy, Fan, Pwm, Clock, Usage,

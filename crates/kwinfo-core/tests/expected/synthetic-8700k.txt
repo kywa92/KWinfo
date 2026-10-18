@@ -1,0 +1,146 @@
+CPU [#0]: Intel Core i7-8700K  [cpu:0]  Cpu #0
+  coretemp.temp1_input | CPU Package | Temperature | Celsius/1 | 38.0 °C | max 80 | crit 100
+  coretemp.temp2_input | Core #0 | Temperature | Celsius/1 | 35.0 °C | max 80 | crit 100
+  coretemp.temp3_input | Core #1 | Temperature | Celsius/1 | 36.0 °C | max 80 | crit 100
+  coretemp.temp4_input | Core #2 | Temperature | Celsius/1 | 34.0 °C | max 80 | crit 100
+  coretemp.temp5_input | Core #3 | Temperature | Celsius/1 | 37.0 °C | max 80 | crit 100
+  coretemp.temp6_input | Core #4 | Temperature | Celsius/1 | 33.0 °C | max 80 | crit 100
+  coretemp.temp7_input | Core #5 | Temperature | Celsius/1 | 36.0 °C | max 80 | crit 100
+  coretemp.temp2_distance | Core #0 Distance to TjMAX | Temperature | Celsius/1 | 65.0 °C
+  coretemp.temp3_distance | Core #1 Distance to TjMAX | Temperature | Celsius/1 | 64.0 °C
+  coretemp.temp4_distance | Core #2 Distance to TjMAX | Temperature | Celsius/1 | 66.0 °C
+  coretemp.temp5_distance | Core #3 Distance to TjMAX | Temperature | Celsius/1 | 63.0 °C
+  coretemp.temp6_distance | Core #4 Distance to TjMAX | Temperature | Celsius/1 | 67.0 °C
+  coretemp.temp7_distance | Core #5 Distance to TjMAX | Temperature | Celsius/1 | 64.0 °C
+  coretemp.core_max | Core Max | Temperature | Celsius/1 | 37.0 °C
+  clock.core0 | Core #0 Clock | Clock | MegaHertz/1 | 4,300.0 MHz
+  clock.core1 | Core #1 Clock | Clock | MegaHertz/1 | 4,300.0 MHz
+  clock.core2 | Core #2 Clock | Clock | MegaHertz/1 | 3,800.1 MHz
+  clock.core3 | Core #3 Clock | Clock | MegaHertz/1 | 1,200.5 MHz
+  clock.core4 | Core #4 Clock | Clock | MegaHertz/1 | 4,100.0 MHz
+  clock.core5 | Core #5 Clock | Clock | MegaHertz/1 | 800.0 MHz
+  usage.cpu0 | Core #0 Thread #0 Usage | Usage | Percent/1 | –
+  usage.cpu6 | Core #0 Thread #1 Usage | Usage | Percent/1 | –
+  usage.cpu1 | Core #1 Thread #0 Usage | Usage | Percent/1 | –
+  usage.cpu7 | Core #1 Thread #1 Usage | Usage | Percent/1 | –
+  usage.cpu2 | Core #2 Thread #0 Usage | Usage | Percent/1 | –
+  usage.cpu8 | Core #2 Thread #1 Usage | Usage | Percent/1 | –
+  usage.cpu3 | Core #3 Thread #0 Usage | Usage | Percent/1 | –
+  usage.cpu9 | Core #3 Thread #1 Usage | Usage | Percent/1 | –
+  usage.cpu4 | Core #4 Thread #0 Usage | Usage | Percent/1 | –
+  usage.cpu10 | Core #4 Thread #1 Usage | Usage | Percent/1 | –
+  usage.cpu5 | Core #5 Thread #0 Usage | Usage | Percent/1 | –
+  usage.cpu11 | Core #5 Thread #1 Usage | Usage | Percent/1 | –
+  usage.max | Max CPU/Thread Usage | Usage | Percent/1 | –
+  usage.total | Total CPU Usage | Usage | Percent/1 | –
+  throttle.core0 | Core #0 Thermal Throttling | Boolean | Bool/0 | No
+  throttle.core1 | Core #1 Thermal Throttling | Boolean | Bool/0 | No
+  throttle.core2 | Core #2 Thermal Throttling | Boolean | Bool/0 | No
+  throttle.core3 | Core #3 Thermal Throttling | Boolean | Bool/0 | No
+  throttle.core4 | Core #4 Thermal Throttling | Boolean | Bool/0 | No
+  throttle.core5 | Core #5 Thermal Throttling | Boolean | Bool/0 | No
+  throttle.package | Package/Ring Thermal Throttling | Boolean | Bool/0 | No
+  ratio.core0 | Core #0 Ratio | Other | Multiplier/1 | 43.0 x
+  ratio.core1 | Core #1 Ratio | Other | Multiplier/1 | 43.0 x
+  ratio.core2 | Core #2 Ratio | Other | Multiplier/1 | 38.0 x
+  ratio.core3 | Core #3 Ratio | Other | Multiplier/1 | 12.0 x
+  ratio.core4 | Core #4 Ratio | Other | Multiplier/1 | 41.0 x
+  ratio.core5 | Core #5 Ratio | Other | Multiplier/1 | 8.0 x
+  cstate.c1 | C1 Residency | Usage | Percent/1 | 0.0 %
+  cstate.c1e | C1E Residency | Usage | Percent/1 | 0.0 %
+  cstate.c3 | C3 Residency | Usage | Percent/1 | 0.0 %
+  cstate.c6 | C6 Residency | Usage | Percent/1 | 0.0 %
+  cstate.c7s | C7s Residency | Usage | Percent/1 | 0.0 %
+  cstate.c8 | C8 Residency | Usage | Percent/1 | 0.0 %
+  cstate.c9 | C9 Residency | Usage | Percent/1 | 0.0 %
+  cstate.c10 | C10 Residency | Usage | Percent/1 | 0.0 %
+ASUS PRIME Z370-A (Nuvoton NCT6793D)  [hwmon:nct6793:nct6775.656]  Motherboard #0
+  temp1_input | SYSTIN | Temperature | Celsius/1 | 31.0 °C
+  temp2_input | CPUTIN | Temperature | Celsius/1 | 36.5 °C
+  temp3_input | AUXTIN0 | Temperature | Celsius/1 | 27.0 °C
+  temp4_input | AUXTIN1 | Temperature | Celsius/1 | 25.5 °C
+  temp5_input | AUXTIN2 | Temperature | Celsius/1 | 26.0 °C
+  temp6_input | AUXTIN3 | Temperature | Celsius/1 | -62.0 °C
+  temp7_input | PECI Agent 0 | Temperature | Celsius/1 | 38.0 °C
+  temp8_input | PCH_CHIP_CPU_MAX_TEMP | Temperature | Celsius/1 | 0.0 °C
+  temp9_input | PCH_CHIP_TEMP | Temperature | Celsius/1 | 0.0 °C
+  temp10_input | PCH_CPU_TEMP | Temperature | Celsius/1 | 0.0 °C
+  in0_input | Vcore | Voltage | Volt/3 | 1.040 V | max 1.744
+  in1_input | Voltage #1 | Voltage | Volt/3 | 1.016 V
+  in2_input | AVCC | Voltage | Volt/3 | 3.392 V | max 3.632
+  in3_input | +3.3V | Voltage | Volt/3 | 3.360 V | max 3.632
+  in4_input | Voltage #4 | Voltage | Volt/3 | 1.008 V
+  in5_input | Voltage #5 | Voltage | Volt/3 | 0.160 V
+  in6_input | Voltage #6 | Voltage | Volt/3 | 0.120 V
+  in7_input | 3VSB | Voltage | Volt/3 | 3.392 V | max 3.632
+  in8_input | VBAT | Voltage | Volt/3 | 3.264 V | max 3.632
+  in9_input | Voltage #9 | Voltage | Volt/3 | 1.056 V
+  in10_input | Voltage #10 | Voltage | Volt/3 | 0.200 V
+  in11_input | Voltage #11 | Voltage | Volt/3 | 0.176 V
+  in12_input | Voltage #12 | Voltage | Volt/3 | 1.032 V
+  in13_input | Voltage #13 | Voltage | Volt/3 | 0.952 V
+  in14_input | Voltage #14 | Voltage | Volt/3 | 0.208 V
+  fan1_input | Fan #1 | Fan | Rpm/0 | 812 RPM
+  fan2_input | Fan #2 | Fan | Rpm/0 | 1,132 RPM
+  fan3_input | Fan #3 | Fan | Rpm/0 | 0 RPM
+  fan4_input | Fan #4 | Fan | Rpm/0 | 2,410 RPM
+  fan5_input | Fan #5 | Fan | Rpm/0 | 0 RPM
+  fan6_input | Fan #6 | Fan | Rpm/0 | 0 RPM
+  pwm1 | PWM #1 | Pwm | Percent/1 | 40.0 %
+  pwm2 | PWM #2 | Pwm | Percent/1 | 60.0 %
+  pwm3 | PWM #3 | Pwm | Percent/1 | 100.0 %
+  pwm4 | PWM #4 | Pwm | Percent/1 | 100.0 %
+  pwm5 | PWM #5 | Pwm | Percent/1 | 50.2 %
+  pwm6 | PWM #6 | Pwm | Percent/1 | 50.2 %
+  intrusion0_alarm | Chassis Intrusion | Boolean | Bool/0 | No
+  intrusion1_alarm | Chassis Intrusion #1 | Boolean | Bool/0 | Yes
+  in0_alarm | Vcore Alarm | Boolean | Bool/0 | No
+  in2_alarm | AVCC Alarm | Boolean | Bool/0 | No
+  in3_alarm | +3.3V Alarm | Boolean | Bool/0 | No
+  in7_alarm | 3VSB Alarm | Boolean | Bool/0 | No
+  in8_alarm | VBAT Alarm | Boolean | Bool/0 | No
+Memory  [memory]  Memory #0
+  used | Physical Memory Used | Capacity | Bytes/1 | 6.0 GB
+  available | Physical Memory Available | Capacity | Bytes/1 | 25.3 GB
+  load | Physical Memory Load | Usage | Percent/1 | 19.1 %
+  swap_used | Swap Used | Capacity | Bytes/1 | 256.0 MB
+  swap_load | Swap Load | Usage | Percent/1 | 12.5 %
+GPU [#0]: Intel UHD Graphics 630  [drm:0000:00:02.0]  Gpu #0
+  gt0.act_freq | GPU Clock | Clock | MegaHertz/1 | 350.0 MHz
+  gt0.cur_freq | GPU Requested Clock | Clock | MegaHertz/1 | 350.0 MHz
+  gt0.max_freq | GPU Max Clock | Clock | MegaHertz/1 | 1,200.0 MHz
+  gt0.boost_freq | GPU Boost Clock | Clock | MegaHertz/1 | 1,200.0 MHz
+Drive: Samsung SSD 970 EVO Plus 1TB  [block:samsung-ssd-970-evo-plus-1tb:35478733]  Drive #0
+  nvme.temp1_input | Drive Temperature | Temperature | Celsius/1 | 41.9 °C | max 84.85 | crit 84.85
+  nvme.temp2_input | Drive Temperature 2 | Temperature | Celsius/1 | 41.9 °C
+  nvme.temp3_input | Drive Temperature 3 | Temperature | Celsius/1 | 45.9 °C
+  nvme.temp1_alarm | Drive Temperature Alarm | Boolean | Bool/0 | No
+  activity | Total Activity | Usage | Percent/1 | 0.0 %
+  read_rate | Read Rate | Throughput | BytesPerSecond/1 | 0 B/s
+  write_rate | Write Rate | Throughput | BytesPerSecond/1 | 0 B/s
+  read_total | Read Total | Capacity | Bytes/1 | 4.7 GB
+  write_total | Write Total | Capacity | Bytes/1 | 3.6 GB
+Drive: Samsung SSD 860 EVO 500GB  [block:samsung-ssd-860-evo-500gb:46d021fb]  Drive #1
+  activity | Total Activity | Usage | Percent/1 | 0.0 %
+  read_rate | Read Rate | Throughput | BytesPerSecond/1 | 0 B/s
+  write_rate | Write Rate | Throughput | BytesPerSecond/1 | 0 B/s
+  read_total | Read Total | Capacity | Bytes/1 | 916.3 MB
+  write_total | Write Total | Capacity | Bytes/1 | 428.0 MB
+Network: enp0s31f6  [net:enp0s31f6]  Network #0
+  download | Download Rate | Throughput | BytesPerSecond/1 | 0 B/s
+  upload | Upload Rate | Throughput | BytesPerSecond/1 | 0 B/s
+  total_down | Total Downloaded | Capacity | Bytes/1 | 7.6 GB
+  total_up | Total Uploaded | Capacity | Bytes/1 | 870.1 MB
+Battery: SMP 5B10W13930  [power_supply:BAT0]  Battery #0
+  charge_level | Charge Level | Usage | Percent/1 | 87.0 %
+  voltage | Voltage | Voltage | Volt/3 | 12.150 V
+  charge_rate | Charge Rate | Power | Watt/3 | -8.640 W
+  remaining | Remaining Capacity | Energy | WattHour/3 | 43.210 Wh
+  full_capacity | Full Charge Capacity | Energy | WattHour/3 | 49.680 Wh
+  wear | Wear Level | Usage | Percent/1 | 12.8 %
+  cycle_count | Cycle Count | Count | Count/0 | 123
+  charging | Charging | Boolean | Bool/0 | No
+  discharging | Discharging | Boolean | Bool/0 | Yes
+  ac_power | AC Power | Boolean | Bool/0 | No
+ACPI Thermal Zone  [hwmon:acpitz:thermal_zone0]  Other #0
+  temp1_input | Temperature | Temperature | Celsius/1 | 27.8 °C | crit 119

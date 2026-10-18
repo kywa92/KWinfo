@@ -14,8 +14,12 @@ use tracing_subscriber::EnvFilter;
 )]
 struct Args {
     /// Use the synthetic mock backend instead of real hardware
-    #[arg(long)]
+    #[arg(long, conflicts_with = "replay")]
     mock: bool,
+    /// Run the real backends against a captured tree instead of / (the output of
+    /// `kwinfo-cli snapshot`, or a test fixture)
+    #[arg(long, value_name = "DIR")]
+    replay: Option<std::path::PathBuf>,
     /// Backend selection through the environment (`KWINFO_BACKEND=mock`)
     #[arg(long, env = "KWINFO_BACKEND", hide = true)]
     backend: Option<String>,
@@ -52,10 +56,10 @@ fn main() -> eframe::Result {
         .init();
 
     let args = Args::parse();
-    let choice = if args.mock || args.backend.as_deref() == Some("mock") {
-        BackendChoice::Mock
-    } else {
-        BackendChoice::Auto
+    let choice = match args.replay {
+        Some(dir) => BackendChoice::Replay(dir),
+        None if args.mock || args.backend.as_deref() == Some("mock") => BackendChoice::Mock,
+        None => BackendChoice::Auto,
     };
     let theme_mode = ThemeMode::from(args.theme);
     let interval = args.interval;

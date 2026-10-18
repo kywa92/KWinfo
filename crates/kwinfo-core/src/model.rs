@@ -162,9 +162,13 @@ pub enum Unit {
     Ampere,
     Watt,
     Joule,
+    /// Battery capacities, which every tool reports in watt-hours rather than joules.
+    WattHour,
     Rpm,
     Percent,
     MegaHertz,
+    /// A clock ratio such as a core multiplier, shown as `43.0 x`.
+    Multiplier,
     BytesPerSecond,
     Bytes,
     Count,
@@ -180,13 +184,30 @@ impl Unit {
             Unit::Ampere => "A",
             Unit::Watt => "W",
             Unit::Joule => "J",
+            Unit::WattHour => "Wh",
             Unit::Rpm => "RPM",
             Unit::Percent => "%",
             Unit::MegaHertz => "MHz",
+            Unit::Multiplier => "x",
             Unit::BytesPerSecond => "B/s",
             Unit::Bytes => "B",
             Unit::Count | Unit::Bool | Unit::None => "",
         }
+    }
+}
+
+/// Thresholds the hardware or its driver reports for a channel, in the channel's unit:
+/// hwmon's `_max` (the warning level) and `_crit`. Unset or nonsensical thresholds are
+/// `None`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Limits {
+    pub max: Option<f64>,
+    pub crit: Option<f64>,
+}
+
+impl Limits {
+    pub fn is_empty(&self) -> bool {
+        self.max.is_none() && self.crit.is_none()
     }
 }
 
@@ -271,6 +292,9 @@ pub struct Channel {
     pub unit: Unit,
     pub decimals: u8,
     pub source: Source,
+    /// Warning and critical thresholds reported by the hardware, if any.
+    #[serde(default, skip_serializing_if = "Limits::is_empty")]
+    pub limits: Limits,
 }
 
 impl Channel {
@@ -284,7 +308,13 @@ impl Channel {
             unit: kind.default_unit(),
             decimals: kind.default_decimals(),
             source: Source::Unprivileged,
+            limits: Limits::default(),
         }
+    }
+
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub fn with_unit(mut self, unit: Unit) -> Self {
@@ -350,5 +380,24 @@ mod tests {
         assert_eq!(channel.unit, Unit::Volt);
         assert_eq!(channel.decimals, 3);
         assert_eq!(channel.source, Source::Unprivileged);
+        assert!(channel.limits.is_empty());
+    }
+
+    #[test]
+    fn limits_are_omitted_from_json_when_unset() {
+        let device = DeviceId::new("cpu:0");
+        let plain = Channel::new(&device, "t", "T", Kind::Temperature);
+        let json = serde_json::to_string(&plain).unwrap();
+        assert!(!json.contains("limits"), "{json}");
+        let back: Channel = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, plain);
+
+        let limited = plain.with_limits(Limits {
+            max: Some(80.0),
+            crit: Some(100.0),
+        });
+        let json = serde_json::to_string(&limited).unwrap();
+        let back: Channel = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.limits.crit, Some(100.0));
     }
 }

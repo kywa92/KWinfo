@@ -15,6 +15,10 @@ use kwinfo_app::theme::ThemeMode;
 use kwinfo_core::BackendChoice;
 
 fn preview(mode: ThemeMode, name: &str, settings_open: bool) {
+    preview_with(BackendChoice::Mock, mode, name, settings_open);
+}
+
+fn preview_with(choice: BackendChoice, mode: ThemeMode, name: &str, settings_open: bool) {
     // The workspace `target/` directory, whatever the test's working directory is.
     let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/preview");
     for suffix in ["png", "new.png"] {
@@ -25,7 +29,7 @@ fn preview(mode: ThemeMode, name: &str, settings_open: bool) {
         .with_size(egui::vec2(780.0, 720.0))
         .with_pixels_per_point(1.0)
         .wgpu()
-        .build_eframe(|cc| KwinfoApp::new(cc, BackendChoice::Mock, 100, mode));
+        .build_eframe(move |cc| KwinfoApp::new(cc, choice, 100, mode));
     harness.state_mut().set_settings_open(settings_open);
     // Let the sampler publish a few ticks so the table has values and statistics.
     std::thread::sleep(Duration::from_millis(400));
@@ -61,4 +65,18 @@ fn app_window_light() {
 fn app_window_settings() {
     preview(ThemeMode::Dark, "app_settings_dark", true);
     preview(ThemeMode::Light, "app_settings_light", true);
+}
+
+#[test]
+#[ignore = "renders with wgpu; run with --ignored on a machine with a GPU"]
+fn app_window_replay() {
+    // The real Linux backends reading the synthetic i7-8700K fixture.
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/synthetic-8700k");
+    preview_with(
+        BackendChoice::Replay(fixture),
+        ThemeMode::Dark,
+        "app_replay_dark",
+        false,
+    );
 }

@@ -61,6 +61,14 @@ jobs:
       - run: cargo test --workspace --locked
       - name: Smoke-test the CLI against the mock backend
         run: cargo run --locked -p kwinfo-cli -- list --mock
+      - name: Replay the synthetic fixture through the real backends
+        run: cargo run --locked -p kwinfo-cli -- list --replay tests/fixtures/synthetic-8700k
+      - name: Read the runner's own sensors, snapshot them and replay the snapshot
+        if: runner.os == 'Linux'
+        run: |
+          cargo run --locked -p kwinfo-cli -- list --ids
+          cargo run --locked -p kwinfo-cli -- snapshot --out "$RUNNER_TEMP/snapshot"
+          cargo run --locked -p kwinfo-cli -- list --replay "$RUNNER_TEMP/snapshot"
 
   deny:
     name: cargo-deny

@@ -12,7 +12,9 @@ repository = "https://github.com/kylanwalters/KWinfo"
 publish = false
 
 [workspace.dependencies]
-kwinfo-core = { path = "crates/kwinfo-core" }
+# Members opt in to the `libsensors` feature themselves (see their `[features]`), so that
+# `--no-default-features` turns it off across the whole workspace.
+kwinfo-core = { path = "crates/kwinfo-core", default-features = false }
 kwinfo-ipc = { path = "crates/kwinfo-ipc" }
 
 anyhow = "1.0"
@@ -23,9 +25,11 @@ eframe = "0.37.0"
 egui = "0.37.0"
 egui_extras = "0.37.0"
 egui_kittest = { version = "0.37.0", features = ["wgpu", "snapshot", "eframe"] }
+lm-sensors = "0.5"
 parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+tempfile = "3"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

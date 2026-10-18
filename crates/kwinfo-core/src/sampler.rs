@@ -250,6 +250,9 @@ impl Worker {
     fn run(mut self, rx: Receiver<Command>) {
         self.rescan(true);
         self.publish(Duration::ZERO);
+        // Enumeration can take a while on a real machine; start the tick schedule after
+        // it, so that the second tick (the first with rates) comes a full interval later.
+        self.next_tick = Instant::now();
         loop {
             if Instant::now() >= self.next_tick {
                 self.tick();

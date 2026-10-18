@@ -17,6 +17,11 @@ path = "src/lib.rs"
 name = "kwinfo"
 path = "src/main.rs"
 
+[features]
+default = ["libsensors"]
+# Use lm-sensors' labels and compute rules on Linux (see kwinfo-core).
+libsensors = ["kwinfo-core/libsensors"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
