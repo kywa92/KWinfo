@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+authors = ["Kylan Walters <kylanwalters@gmail.com>"]
+repository = "https://github.com/kylanwalters/KWinfo"
+publish = false
+
+[workspace.dependencies]
+kwinfo-core = { path = "crates/kwinfo-core" }
+kwinfo-ipc = { path = "crates/kwinfo-ipc" }
+
+anyhow = "1.0"
+arc-swap = "1.7"
+clap = { version = "4.5", features = ["derive", "env"] }
+dark-light = "3.0"
+eframe = "0.37.0"
+egui = "0.37.0"
+egui_extras = "0.37.0"
+egui_kittest = { version = "0.37.0", features = ["wgpu", "snapshot", "eframe"] }
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+
+# egui is unpleasantly slow in unoptimised builds; optimise dependencies only.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

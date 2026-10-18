@@ -1,0 +1,23 @@
+//! Core of KWinfo: the sensor data model, the backend trait, the sampler thread that
+//! turns backend readings into statistics and history, and the mock backend used for
+//! development on machines without Linux hardware access.
+//!
+//! The GUI (`kwinfo-app`) and the command line tool (`kwinfo-cli`) only ever talk to
+//! this crate; they never read hardware themselves.
+
+pub mod backend;
+pub mod backends;
+pub mod format;
+pub mod history;
+pub mod mock;
+pub mod model;
+pub mod sampler;
+pub mod stats;
+
+pub use backend::Backend;
+pub use backends::{BackendChoice, BackendSet};
+pub use format::{TemperatureUnit, format_value};
+pub use history::History;
+pub use model::{Category, Channel, ChannelId, Device, DeviceId, Kind, Sample, Source, Unit};
+pub use sampler::{ChannelSnapshot, DeviceSnapshot, Sampler, SamplerConfig, Snapshot};
+pub use stats::Stats;

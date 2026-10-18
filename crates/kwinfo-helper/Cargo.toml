@@ -1,0 +1,21 @@
+[package]
+name = "kwinfo-helper"
+description = "Privileged sensor helper for KWinfo (reads RAPL, MSRs, S.M.A.R.T. and GPU counters as root)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kwinfo-helper"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+kwinfo-ipc.workspace = true
+
+[lints]
+workspace = true

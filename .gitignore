@@ -1,0 +1,20 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Snapshot test scratch output (committed snapshots live in tests/snapshots/*.png)
+**/*.new.png
+**/*.diff.png
+
+# Packaging output
+/dist/
+*.AppImage
+*.deb
+/AppDir/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
