@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 authors = ["Kylan Walters <kylanwalters@gmail.com>"]
-repository = "https://github.com/kylanwalters/KWinfo"
+repository = "https://github.com/kywa92/KWinfo"
 publish = false
 
 [workspace.dependencies]
