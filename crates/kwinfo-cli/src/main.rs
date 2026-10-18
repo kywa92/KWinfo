@@ -13,7 +13,7 @@ use kwinfo_core::{
     BackendChoice, BackendSet, Sampler, SamplerConfig, Snapshot, SysRoot, TemperatureUnit,
     format_value,
 };
-use tracing_subscriber::EnvFilter;
+use kwinfo_diag::report::{Inventory, ReportOptions};
 
 /// Time between the two readings `list` takes: rates and usage need two.
 const LIST_INTERVAL: Duration = Duration::from_millis(500);
@@ -49,6 +49,22 @@ enum Command {
         /// Show the stable id of every device and channel
         #[arg(long)]
         ids: bool,
+    },
+    /// Bundle the newest diagnostic logs, a machine summary, the configuration and the
+    /// sensor inventory into one text file to attach to a bug report
+    Report {
+        /// File to write (default: a timestamped file next to the logs)
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
+        /// Take the inventory from the mock backend
+        #[arg(long, conflicts_with = "replay")]
+        mock: bool,
+        /// Take the inventory from a captured tree
+        #[arg(long, value_name = "DIR")]
+        replay: Option<PathBuf>,
+        /// Leave the sensor inventory out (no hardware access, faster)
+        #[arg(long)]
+        no_inventory: bool,
     },
     /// Copy the sensor-relevant parts of /sys and /proc into a directory, with serial
     /// numbers, WWNs and MAC addresses scrubbed, for test fixtures and bug reports
@@ -103,12 +119,11 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_env("KWINFO_LOG").unwrap_or_else(|_| EnvFilter::new("warn")),
-        )
-        .with_writer(std::io::stderr)
-        .init();
+    // Stderr plus a per-run log file; see the kwinfo-diag crate. Kept alive until exit.
+    let _diag = kwinfo_diag::init(
+        kwinfo_diag::DiagConfig::new("kwinfo-cli", env!("CARGO_PKG_VERSION"))
+            .stderr_default("warn"),
+    );
 
     let args = Args::parse();
     match args.command {
@@ -130,6 +145,33 @@ fn main() -> anyhow::Result<()> {
                 TemperatureUnit::Celsius
             };
             list(choice, temperature, ids)
+        }
+        Command::Report {
+            out,
+            mock,
+            replay,
+            no_inventory,
+        } => {
+            let inventory = if no_inventory {
+                Inventory::None
+            } else {
+                Inventory::Collect(match replay {
+                    Some(dir) => BackendChoice::Replay(dir),
+                    None if mock => BackendChoice::Mock,
+                    None => BackendChoice::Auto,
+                })
+            };
+            let path = kwinfo_diag::report::write(ReportOptions {
+                out,
+                inventory,
+                ..ReportOptions::default()
+            })?;
+            println!("Diagnostic report written to {}", path.display());
+            println!(
+                "Attach it when reporting a problem: it holds the machine summary, the \
+                 configuration, the sensor inventory and the newest log files."
+            );
+            Ok(())
         }
         Command::Snapshot { out, root } => take_snapshot(&root, &out),
         Command::Record {

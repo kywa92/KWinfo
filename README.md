@@ -65,6 +65,19 @@ cargo run --release -p kwinfo-cli --no-default-features -- record --duration 2m 
 Rates and usage come out as recorded whatever the polling interval, because the backends
 take the recorded time of each frame rather than the wall clock.
 
+## Diagnostics and logs
+
+Every KWinfo binary writes a log file per run (on Linux under `~/.local/state/kwinfo/logs/`)
+that starts with a machine summary and records backend activity, user actions and panics.
+To collect everything from a test machine in one file to attach to a bug report:
+
+```bash
+kwinfo-cli report
+```
+
+See [docs/diagnostics.md](docs/diagnostics.md) for the locations, the environment
+variables and what the report contains.
+
 ## Testing
 
 ```bash

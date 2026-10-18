@@ -8,6 +8,10 @@ All notable changes to KWinfo are documented here. The format follows
 
 ### Added
 
+- Diagnostic logging (`kwinfo-diag`): a log file per run with a machine header, panic
+  backtraces, user-action and sampler-health lines, and `kwinfo-cli report` bundling the
+  logs, configuration and sensor inventory into one text file (docs/diagnostics.md).
+
 - Bootstrap the Cargo workspace: `kwinfo-core`, `kwinfo-ipc`, `kwinfo-helper`,
   `kwinfo-app`, `kwinfo-cli` (milestone M0).
 - Sensor data model, sampler thread and a mock backend for development on any OS.
