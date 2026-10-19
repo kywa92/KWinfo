@@ -21,9 +21,16 @@ fn app(config: Config, config_file: Option<ConfigFile>) -> Harness<'static, Kwin
     })
 }
 
+/// Frames `Harness::run` may take to settle. kittest's default of 4 is too tight for this
+/// app: every widget that appears for the first time costs egui an extra frame to style,
+/// and a background thread (the sampler, the report writer) finishing mid-run adds more,
+/// which on a slow CI runner overflowed the default.
+const MAX_STEPS: u64 = 16;
+
 fn start(startup: Startup) -> Harness<'static, KwinfoApp> {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(780.0, 720.0))
+        .with_max_steps(MAX_STEPS)
         .build_eframe(move |cc| {
             KwinfoApp::new(
                 cc,
@@ -406,7 +413,9 @@ fn the_diagnostic_report_holds_what_the_window_shows() {
     harness.state_mut().set_settings_open(true);
     harness.run();
     harness.get_by_label("Save diagnostic report…").click();
-    harness.run();
+    // The report is written on a background thread: step until it reports back rather
+    // than expecting the UI to settle within a fixed number of frames.
+    harness.step();
     wait_for(&mut harness, |h| h.state().report_result().is_some());
     harness.run();
     assert_eq!(harness.state().report_result(), Some(&Ok(out.clone())));
