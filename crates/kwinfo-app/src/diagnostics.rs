@@ -12,6 +12,18 @@ use kwinfo_diag::report::{Inventory, ReportOptions};
 /// channel with its name, current value, kind and key, in the layout `kwinfo-cli report`
 /// uses. Renamed, hidden and disabled sensors are marked, since they explain what the
 /// user saw. Values are in °C whatever the display setting, like the CLI's.
+/// The privileged helper's state for the report: one line, and the helper's notes on
+/// sources it could not open.
+pub fn helper_text(state: &kwinfo_ipc::client::HelperState) -> String {
+    let mut text = format!("helper: {}\n", state.describe());
+    if let kwinfo_ipc::client::HelperState::Running { capabilities, .. } = state {
+        for note in &capabilities.notes {
+            let _ = writeln!(text, "helper note: {note}");
+        }
+    }
+    text
+}
+
 pub fn inventory_text(snapshot: &Snapshot, config: &Config) -> String {
     let mut text = String::new();
     for device in &snapshot.devices {

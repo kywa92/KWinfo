@@ -9,14 +9,34 @@ authors.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[lib]
+name = "kwinfo_helper"
+path = "src/lib.rs"
+
 [[bin]]
 name = "kwinfo-helper"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
+kwinfo-core.workspace = true
 kwinfo-diag = { path = "../kwinfo-diag" }
 kwinfo-ipc.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+zbus.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+zbus = { workspace = true, features = ["p2p"] }
 
 [lints]
 workspace = true

@@ -1,0 +1,39 @@
+# KWinfo's privileged sensor helper. Started by D-Bus activation on the first call to
+# io.github.kywa92.KWinfo.Helper; exits by itself after two minutes without calls.
+# @HELPER@ is replaced with the helper's path when installing.
+
+[Unit]
+Description=KWinfo privileged sensor helper
+Documentation=https://github.com/kywa92/KWinfo/blob/main/docs/helper.md
+
+[Service]
+Type=dbus
+BusName=io.github.kywa92.KWinfo.Helper
+ExecStart=@HELPER@ serve
+Environment=KWINFO_LOG=info
+
+# The helper only reads. MSRs need CAP_SYS_RAWIO, NVMe S.M.A.R.T. (through smartctl)
+# CAP_SYS_ADMIN, the GPU counters CAP_PERFMON; nothing else is kept.
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_SYS_ADMIN CAP_PERFMON
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=perf_event_open
+UMask=0077

@@ -269,3 +269,67 @@ fn app_window_graphs() {
         write(&mut harness, name);
     }
 }
+
+/// The Helper tab: not installed (with Install and Run offered), and running with a note
+/// on a source it could not open.
+#[test]
+#[ignore = "renders with wgpu; run with --ignored on a machine with a GPU"]
+fn app_window_helper_tab() {
+    use kwinfo_ipc::Capabilities;
+    use kwinfo_ipc::client::{self, HelperState, Via};
+    let running = HelperState::Running {
+        via: Via::Service,
+        version: "0.1.0".into(),
+        capabilities: Capabilities {
+            rapl: true,
+            msr: false,
+            smart: true,
+            gpu_pmu: true,
+            notes: vec![
+                "The msr kernel module is not loaded, so core VIDs, power limits and package \
+                 C-states are missing: sudo modprobe msr (kwinfo-helper install loads it at \
+                 every boot)."
+                    .into(),
+            ],
+        },
+    };
+    for (mode, name, state) in [
+        (
+            ThemeMode::Dark,
+            "app_helper_not_installed_dark",
+            HelperState::NotInstalled,
+        ),
+        (
+            ThemeMode::Light,
+            "app_helper_not_installed_light",
+            HelperState::NotInstalled,
+        ),
+        (ThemeMode::Dark, "app_helper_running_dark", running.clone()),
+        (ThemeMode::Light, "app_helper_running_light", running),
+    ] {
+        let helper = Some((
+            client::fixed(state),
+            Some(PathBuf::from("/usr/local/bin/kwinfo-helper")),
+        ));
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(780.0, 720.0))
+            .with_pixels_per_point(1.0)
+            .wgpu()
+            .build_eframe(move |cc| {
+                KwinfoApp::new(
+                    cc,
+                    Startup {
+                        interval_ms: Some(100),
+                        theme: Some(mode),
+                        helper,
+                        ..Startup::in_memory(BackendChoice::Mock)
+                    },
+                )
+            });
+        std::thread::sleep(Duration::from_millis(300));
+        harness.state_mut().set_settings_tab(SettingsTab::Helper);
+        harness.state_mut().set_settings_open(true);
+        harness.run_steps(6);
+        write(&mut harness, name);
+    }
+}

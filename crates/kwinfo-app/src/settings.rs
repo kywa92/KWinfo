@@ -88,11 +88,7 @@ impl KwinfoApp {
                         "CSV logging (start and stop, interval, choice of sensors, daily files) \
                          arrives in milestone M5.",
                     ),
-                    SettingsTab::Helper => self.later(
-                        ui,
-                        "The privileged helper (RAPL power, MSRs, S.M.A.R.T., GPU load) and \
-                         the buttons to install or start it arrive in milestone M4.",
-                    ),
+                    SettingsTab::Helper => self.helper_tab(ui),
                     SettingsTab::Alerts => self.later(
                         ui,
                         "Per-sensor alerts with desktop notifications arrive in milestone M5.",

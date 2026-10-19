@@ -1,0 +1,6 @@
+# D-Bus activation for KWinfo's helper: the bus starts it through systemd.
+[D-BUS Service]
+Name=io.github.kywa92.KWinfo.Helper
+Exec=@HELPER@ serve
+User=root
+SystemdService=kwinfo-helper.service

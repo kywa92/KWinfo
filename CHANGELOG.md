@@ -13,6 +13,25 @@ All notable changes to KWinfo are documented here. The format follows
 
 ### Added
 
+- The privileged helper (milestone M4), `kwinfo-helper`: RAPL power (package, IA
+  cores, GT, DRAM, platform) averaged over at least 250 ms; Intel MSRs (core VIDs, core and
+  package power-limit status, package C2-C10 residency); S.M.A.R.T. through `smartctl`
+  JSON (temperature, remaining life, failure and warning flags, hours, host reads and
+  writes, error counters; sleeping disks are not woken); i915 engine load and RC6 through
+  `perf_event_open`. Rows join the CPU and GPU groups of the unprivileged backends.
+- Helper transports: `stdio` (one JSON message per line, for `pkexec`) and `serve`, a D-Bus
+  system service started by D-Bus activation, authorising callers through polkit
+  (`io.github.kywa92.KWinfo.read-sensors`, active local sessions) and exiting when idle.
+  `kwinfo-helper install` / `uninstall` set up and remove the service (systemd unit with
+  sandboxing, D-Bus files, polkit action, `msr` at boot); templates in `packaging/`.
+  `kwinfo-helper probe` prints what the helper reads.
+- Helper client in `kwinfo-ipc`: a sampler backend that merges the helper's devices and
+  readings, reconnects quietly, and starts a session helper on request. The toolbar's
+  Helper button shows the state; Settings → Helper installs, uninstalls or runs it for the
+  session. `kwinfo-cli list` includes the service's rows, `kwinfo-cli helper [--session]`
+  shows them, and diagnostic reports record the helper's state.
+- `kwinfo-cli snapshot` also captures the RAPL domains and the i915 PMU's events; the
+  synthetic 8700K fixture has both, and `tests/fixtures/smartctl` holds smartctl output.
 - Graphs (milestone M3): a live, HWiNFO-style graph per sensor, opened by double-clicking
   a row or from its menu. Filled area under a line on a grid, spikes kept when there are
   more readings than pixels, gaps for failed readings, a hover readout, and a column with

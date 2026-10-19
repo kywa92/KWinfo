@@ -17,6 +17,7 @@ use kwinfo_diag::action;
 use crate::diagnostics::{self, ReportJob};
 use crate::dialogs::{ColorDialog, Outcome, RenameDialog};
 use crate::graphs::{self, GraphHub};
+use crate::helper::HelperJob;
 use crate::icons::{self, Icon};
 use crate::persist::Persistence;
 use crate::self_usage::SelfUsage;
@@ -53,6 +54,8 @@ pub struct Startup {
     /// Where "Save diagnostic report…" writes; `None` puts the report next to the log
     /// files, as `kwinfo-cli report` does.
     pub report_out: Option<PathBuf>,
+    /// Replaces the helper (tests, previews): its handle and the helper program.
+    pub helper: Option<(kwinfo_ipc::client::HelperHandle, Option<PathBuf>)>,
 }
 
 impl Startup {
@@ -66,6 +69,7 @@ impl Startup {
             interval_ms: None,
             theme: None,
             report_out: None,
+            helper: None,
         }
     }
 }
@@ -79,6 +83,13 @@ pub struct KwinfoApp {
     pub(crate) graph_scroll_to: Option<ChannelId>,
     /// The session is Wayland: no window positions (see [`graphs::is_wayland`]).
     pub(crate) wayland: bool,
+    /// The privileged helper's state, and the way to start or stop it.
+    pub(crate) helper: kwinfo_ipc::client::HelperHandle,
+    /// `kwinfo-helper` next to this executable, or installed (for Install and Run).
+    pub(crate) helper_binary: Option<PathBuf>,
+    pub(crate) helper_job: Option<HelperJob>,
+    /// The last install or uninstall: what, and its output or error.
+    pub(crate) helper_result: Option<(&'static str, Result<String, String>)>,
     /// Notes from the backends, shown when there is nothing else to show.
     notes: Vec<String>,
     /// Problems the user should know about (settings file); dismissable.
@@ -116,11 +127,19 @@ impl KwinfoApp {
             interval_ms,
             theme,
             report_out,
+            helper: helper_override,
         } = startup;
-        let set = BackendSet::build(backend);
+        let mut set = BackendSet::build(backend.clone());
         for note in &set.notes {
             tracing::info!("{note}");
         }
+        let (helper, helper_binary) = match helper_override {
+            Some(fixed) => fixed,
+            None => (
+                helper_for(&backend, &mut set),
+                kwinfo_ipc::client::find_helper(),
+            ),
+        };
         let interval_ms = interval_ms.unwrap_or(config.polling.interval_ms);
         let sampler = Arc::new(Sampler::start(
             set.backends,
@@ -142,6 +161,10 @@ impl KwinfoApp {
             graphs,
             graph_scroll_to: None,
             wayland: graphs::is_wayland(),
+            helper,
+            helper_binary,
+            helper_job: None,
+            helper_result: None,
             notes: set.notes,
             warnings,
             persistence: Persistence::new(config_file, &config),
@@ -235,7 +258,8 @@ impl KwinfoApp {
             return;
         }
         action!("diagnostics.report");
-        let inventory = diagnostics::inventory_text(&self.snapshot, &self.config);
+        let mut inventory = diagnostics::inventory_text(&self.snapshot, &self.config);
+        inventory.push_str(&diagnostics::helper_text(&self.helper.state()));
         self.report_result = None;
         self.report_job = Some(ReportJob::start(
             inventory,
@@ -509,6 +533,7 @@ impl eframe::App for KwinfoApp {
         self.snapshot = Arc::clone(&snapshot);
         self.shortcuts(&ctx);
         self.poll_report();
+        self.poll_helper_job();
 
         egui::Panel::bottom("toolbar")
             .frame(
@@ -591,6 +616,29 @@ impl Drop for KwinfoApp {
     fn drop(&mut self) {
         if self.persistence.is_dirty(&self.config) {
             self.persistence.flush(&self.config);
+        }
+    }
+}
+
+/// The helper for the data source: the system service, looked for in the background,
+/// for live Linux data; none for mock and replayed data, or on other systems.
+fn helper_for(backend: &BackendChoice, set: &mut BackendSet) -> kwinfo_ipc::client::HelperHandle {
+    use kwinfo_ipc::client::{self, ClientOptions};
+    match backend {
+        BackendChoice::Auto if cfg!(target_os = "linux") => {
+            let (helper, handle) = client::start(ClientOptions {
+                service: true,
+                session: None,
+            });
+            set.backends.push(Box::new(helper));
+            handle
+        }
+        BackendChoice::Auto => client::unavailable("The privileged helper only runs on Linux."),
+        BackendChoice::Mock => client::unavailable(
+            "The mock backend simulates the helper's rows; the real helper is not used.",
+        ),
+        BackendChoice::Replay(_) => {
+            client::unavailable("Replayed data comes from files; the helper is not used.")
         }
     }
 }

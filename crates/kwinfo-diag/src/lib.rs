@@ -64,6 +64,8 @@ pub struct DiagConfig {
     pub stderr_default: &'static str,
     /// Where to write log files; `None` means `KWINFO_LOG_DIR` or the platform default.
     pub log_dir: Option<PathBuf>,
+    /// Whether to write a log file at all (the privileged helper logs to stderr only).
+    pub file: bool,
 }
 
 impl DiagConfig {
@@ -73,6 +75,7 @@ impl DiagConfig {
             version,
             stderr_default: "info",
             log_dir: None,
+            file: true,
         }
     }
 
@@ -83,6 +86,12 @@ impl DiagConfig {
 
     pub fn log_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.log_dir = Some(dir.into());
+        self
+    }
+
+    /// Logs to stderr only, with no log file.
+    pub fn without_file(mut self) -> Self {
+        self.file = false;
         self
     }
 }
@@ -124,7 +133,7 @@ pub fn init(config: DiagConfig) -> DiagGuard {
         .with_filter(stderr_filter);
     let registry = tracing_subscriber::registry().with(stderr_layer);
 
-    let disabled = std::env::var_os("KWINFO_NO_FILE_LOG").is_some_and(|v| v != "0");
+    let disabled = !config.file || std::env::var_os("KWINFO_NO_FILE_LOG").is_some_and(|v| v != "0");
     let opened = if disabled {
         None
     } else {

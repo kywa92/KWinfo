@@ -32,7 +32,7 @@ impl Counter {
 /// A short, stable, non-reversible tag for an identifier such as a drive's serial number
 /// or WWN. Device ids use it so that they stay unique per drive without writing serial
 /// numbers into config files, logs or bug reports.
-pub(crate) fn short_hash(value: &str) -> String {
+pub fn short_hash(value: &str) -> String {
     // FNV-1a (64 bit); the low 32 bits are plenty to tell one machine's drives apart.
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in value.as_bytes() {
@@ -44,7 +44,7 @@ pub(crate) fn short_hash(value: &str) -> String {
 
 /// Lower-case ASCII words joined by `-`, for readable id parts:
 /// `Samsung SSD 970 EVO Plus 1TB` → `samsung-ssd-970-evo-plus-1tb`.
-pub(crate) fn slug(s: &str) -> String {
+pub fn slug(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         if c.is_ascii_alphanumeric() {

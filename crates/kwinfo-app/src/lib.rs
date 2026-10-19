@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod dialogs;
 pub mod graph;
 pub mod graphs;
+pub mod helper;
 pub mod icons;
 pub mod menu;
 pub mod persist;

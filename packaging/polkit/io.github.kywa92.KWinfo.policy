@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>KWinfo</vendor>
+  <vendor_url>https://github.com/kywa92/KWinfo</vendor_url>
+
+  <action id="io.github.kywa92.KWinfo.read-sensors">
+    <description>Read hardware sensors that need administrator rights</description>
+    <message>KWinfo wants to read CPU power, S.M.A.R.T. data and other protected sensors</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

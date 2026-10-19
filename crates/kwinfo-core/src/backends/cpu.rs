@@ -24,7 +24,7 @@ const BUS_CLOCK_MHZ: f64 = 100.0;
 /// The device every CPU-package row belongs to, shared with the `hwmon` backend so that
 /// `coretemp` temperatures land in the same group: id `cpu:<package>`, label
 /// `CPU [#0]: Intel Core i7-8700K`.
-pub(crate) fn package_device(root: &SysRoot, package: u32) -> Device {
+pub fn package_device(root: &SysRoot, package: u32) -> Device {
     let info = read_cpuinfo(root);
     let name = info
         .models
@@ -39,18 +39,18 @@ pub(crate) fn package_device(root: &SysRoot, package: u32) -> Device {
 
 /// What `/proc/cpuinfo` says about the packages: model names and the vendor.
 #[derive(Debug, Default)]
-pub(crate) struct CpuInfo {
+pub struct CpuInfo {
     pub vendor: Option<String>,
     pub models: BTreeMap<u32, String>,
 }
 
-pub(crate) fn read_cpuinfo(root: &SysRoot) -> CpuInfo {
+pub fn read_cpuinfo(root: &SysRoot) -> CpuInfo {
     std::fs::read_to_string(root.proc("cpuinfo"))
         .map(|text| parse_cpuinfo(&text))
         .unwrap_or_default()
 }
 
-pub(crate) fn parse_cpuinfo(text: &str) -> CpuInfo {
+pub fn parse_cpuinfo(text: &str) -> CpuInfo {
     let mut info = CpuInfo::default();
     for block in text.split("\n\n") {
         let mut package = 0;
@@ -160,7 +160,7 @@ pub(crate) fn parse_proc_stat(text: &str, out: &mut Vec<(u32, CpuTimes)>) {
 
 /// Where a logical CPU sits: its package, core and position among the core's threads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Thread {
+pub struct Thread {
     pub cpu: u32,
     pub package: u32,
     pub core: u32,
@@ -168,7 +168,7 @@ pub(crate) struct Thread {
 }
 
 /// The online logical CPUs with their topology, ordered by package, core and thread.
-pub(crate) fn read_topology(root: &SysRoot) -> Vec<Thread> {
+pub fn read_topology(root: &SysRoot) -> Vec<Thread> {
     let base = root.sys("devices/system/cpu");
     let mut found = Vec::new();
     for name in list_dir(&base) {

@@ -14,6 +14,7 @@ use kwinfo_core::{
     format_value,
 };
 use kwinfo_diag::report::{Inventory, ReportOptions};
+use kwinfo_ipc::client::{self, ClientOptions, HelperState, SessionCommand};
 
 /// Time between the two readings `list` takes: rates and usage need two.
 const LIST_INTERVAL: Duration = Duration::from_millis(500);
@@ -49,6 +50,17 @@ enum Command {
         /// Show the stable id of every device and channel
         #[arg(long)]
         ids: bool,
+    },
+    /// Show what the privileged helper reads: through the system service, or with
+    /// --session from a helper started with pkexec for this command
+    Helper {
+        /// Start the helper with pkexec (asks for an administrator password) instead of
+        /// using the system service
+        #[arg(long)]
+        session: bool,
+        /// Show temperatures in Fahrenheit
+        #[arg(long)]
+        fahrenheit: bool,
     },
     /// Bundle the newest diagnostic logs, a machine summary, the configuration and the
     /// sensor inventory into one text file to attach to a bug report
@@ -146,6 +158,17 @@ fn main() -> anyhow::Result<()> {
             };
             list(choice, temperature, ids)
         }
+        Command::Helper {
+            session,
+            fahrenheit,
+        } => {
+            let temperature = if fahrenheit {
+                TemperatureUnit::Fahrenheit
+            } else {
+                TemperatureUnit::Celsius
+            };
+            helper(session, temperature)
+        }
         Command::Report {
             out,
             mock,
@@ -186,12 +209,32 @@ fn main() -> anyhow::Result<()> {
 /// Runs the backends through the real sampler for two ticks, so that devices several
 /// backends contribute to are merged and ordered exactly as in the GUI.
 fn sample_twice(choice: BackendChoice) -> anyhow::Result<std::sync::Arc<Snapshot>> {
-    let set = BackendSet::build(choice);
+    let live = matches!(choice, BackendChoice::Auto) && cfg!(target_os = "linux");
+    let mut set = BackendSet::build(choice);
     for note in &set.notes {
         eprintln!("note: {note}");
     }
+    if live {
+        // The system service's rows too, when it is installed; never a password prompt.
+        let (backend, handle) = client::start(ClientOptions {
+            service: true,
+            session: None,
+        });
+        let state = handle.wait_settled(Duration::from_secs(3));
+        if !state.is_running() {
+            eprintln!("note: {}", state.describe());
+        }
+        set.backends.push(Box::new(backend));
+    }
+    sample_backends(set.backends)
+}
+
+/// Two ticks of `backends` through the real sampler.
+fn sample_backends(
+    backends: Vec<Box<dyn kwinfo_core::Backend>>,
+) -> anyhow::Result<std::sync::Arc<Snapshot>> {
     let sampler = Sampler::start(
-        set.backends,
+        backends,
         SamplerConfig {
             interval: LIST_INTERVAL,
             history_capacity: 1,
@@ -220,9 +263,42 @@ struct Line {
 
 fn list(choice: BackendChoice, temperature: TemperatureUnit, ids: bool) -> anyhow::Result<()> {
     let snapshot = sample_twice(choice)?;
+    print_snapshot(&snapshot, temperature, ids);
+    Ok(())
+}
+
+/// `kwinfo-cli helper`: the helper's state, its notes and its readings.
+fn helper(session: bool, temperature: TemperatureUnit) -> anyhow::Result<()> {
+    let session = if session {
+        let helper = client::find_helper()
+            .ok_or_else(|| anyhow::anyhow!("kwinfo-helper was not found next to kwinfo-cli"))?;
+        Some(SessionCommand::pkexec(&client::runnable_by_root(&helper)?))
+    } else {
+        None
+    };
+    let (backend, handle) = client::start(ClientOptions {
+        service: session.is_none(),
+        session,
+    });
+    // Long enough for someone to type a password.
+    let state = handle.wait_settled(Duration::from_secs(300));
+    println!("{}", state.describe());
+    let HelperState::Running { capabilities, .. } = &state else {
+        anyhow::bail!("the helper is not running");
+    };
+    for note in &capabilities.notes {
+        println!("Note: {note}");
+    }
+    println!();
+    let snapshot = sample_backends(vec![Box::new(backend)])?;
+    print_snapshot(&snapshot, temperature, true);
+    Ok(())
+}
+
+fn print_snapshot(snapshot: &Snapshot, temperature: TemperatureUnit, ids: bool) {
     if snapshot.devices.is_empty() {
         println!("No devices found.");
-        return Ok(());
+        return;
     }
 
     let groups: Vec<(String, Vec<Line>)> = snapshot
@@ -284,7 +360,6 @@ fn list(choice: BackendChoice, temperature: TemperatureUnit, ids: bool) -> anyho
         groups.len(),
         snapshot.channel_count()
     );
-    Ok(())
 }
 
 fn take_snapshot(root: &Path, out: &Path) -> anyhow::Result<()> {

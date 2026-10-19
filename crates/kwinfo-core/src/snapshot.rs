@@ -131,6 +131,21 @@ const PCI_FILES: &[&str] = &[
     "revision",
 ];
 /// DMI fields that identify the model, never the unit: no serials, UUID or asset tags.
+/// RAPL domain files the privileged helper reads (`energy_uj` is root-only: a snapshot
+/// taken as root has it, others list it as unreadable).
+const POWERCAP_FILES: &[&str] = &[
+    "name",
+    "enabled",
+    "energy_uj",
+    "max_energy_range_uj",
+    "constraint_0_name",
+    "constraint_0_power_limit_uw",
+    "constraint_0_time_window_us",
+    "constraint_1_name",
+    "constraint_1_power_limit_uw",
+    "constraint_1_time_window_us",
+];
+
 const DMI_FILES: &[&str] = &[
     "board_vendor",
     "board_name",
@@ -329,6 +344,21 @@ impl Mirror {
             let supply = PathBuf::from("sys/class/power_supply").join(&name);
             self.copy_files(&supply, |f| f != "uevent");
             self.walk(&supply.join("device"), true, 0);
+        }
+
+        // RAPL energy counters and the i915 performance counters' events, which the
+        // privileged helper reads.
+        for name in list_dir(&source.sys("class/powercap")) {
+            let domain = PathBuf::from("sys/class/powercap").join(&name);
+            self.copy_files(&domain, |f| POWERCAP_FILES.contains(&f));
+        }
+        for name in list_dir(&source.sys("bus/event_source/devices")) {
+            if name != "i915" && !name.starts_with("i915_") {
+                continue;
+            }
+            let pmu = PathBuf::from("sys/bus/event_source/devices").join(&name);
+            self.copy_files(&pmu, |f| f == "type" || f == "cpumask");
+            self.copy_files(&pmu.join("events"), |_| true);
         }
 
         let dmi = PathBuf::from("sys/class/dmi/id");
@@ -742,9 +772,10 @@ mod tests {
         );
 
         assert!(report.files > 900, "copied {} files", report.files);
-        // The fixture's 46 links, minus loop0, docker0, the DP connector and render node
-        // (and their `device` links) and the AHCI controller's `driver` link.
-        assert_eq!(report.links, 39);
+        // The fixture's 54 links, minus loop0, docker0, the DP connector and render node
+        // (and their `device` links) and the AHCI controller's `driver` link. Eight of
+        // them are the powercap domains and the i915 PMU the helper reads.
+        assert_eq!(report.links, 47);
         assert!(report.unreadable.is_empty(), "{:?}", report.unreadable);
         let manifest = read(MANIFEST);
         assert!(manifest.contains("nvme/nvme0/serial"), "{manifest}");

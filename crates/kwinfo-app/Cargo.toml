@@ -31,6 +31,7 @@ egui.workspace = true
 egui_extras.workspace = true
 kwinfo-core.workspace = true
 kwinfo-diag = { path = "../kwinfo-diag" }
+kwinfo-ipc.workspace = true
 parking_lot.workspace = true
 tracing.workspace = true
 

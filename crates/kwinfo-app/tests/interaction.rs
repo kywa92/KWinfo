@@ -606,3 +606,34 @@ fn the_toolbar_menu_closes_all_graphs() {
     harness.run();
     assert!(harness.state().open_graphs().is_empty());
 }
+
+#[test]
+fn the_helper_tab_offers_install_and_reports_a_failed_pkexec() {
+    use kwinfo_ipc::client::{self, HelperState};
+    let mut harness = start(Startup {
+        helper: Some((
+            client::fixed(HelperState::NotInstalled),
+            Some(std::path::PathBuf::from("/nonexistent/kwinfo-helper")),
+        )),
+        ..Startup::in_memory(BackendChoice::Mock)
+    });
+    harness.state_mut().set_settings_tab(SettingsTab::Helper);
+    harness.state_mut().set_settings_open(true);
+    harness.run();
+    assert!(harness.query_by_label("Run for this session").is_some());
+    assert!(harness.query_by_label("Try again").is_some());
+    assert!(harness.query_by_label("Uninstall helper…").is_none());
+    assert_eq!(
+        harness.query_by_label("Helper: not installed").map(|_| ()),
+        Some(()),
+        "the toolbar names the state"
+    );
+
+    // There is no pkexec on the test machine (or no polkit agent to answer it): the
+    // job ends with an error the tab shows, and nothing is left running.
+    harness.get_by_label("Install helper…").click();
+    harness.step();
+    wait_for(&mut harness, |h| !h.state().helper_busy());
+    harness.run();
+    assert!(matches!(harness.state().helper_result(), Some(Err(_))));
+}

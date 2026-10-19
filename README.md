@@ -4,14 +4,15 @@ A Linux hardware monitor in the spirit of HWiNFO64's *Sensor Status* window and 
 floating sensor graphs. Written in Rust with [egui](https://github.com/emilk/egui), shipped
 as a `.deb` and an AppImage, with dark and light themes.
 
-**Status:** milestone M3. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
+**Status:** milestone M4. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
 `block`, `memory`, `network`, `power_supply`, plus lm-sensors labels) read real hardware on
 Linux; the Sensor Status window is complete (a tree-table with sub-groups, per-kind
 icons, context menus, a quick filter, a toolbar and a settings dialog, with every setting
-remembered between runs); and every sensor has a live graph, in its own window or in a
-panel of the main window. Root-only sensors (RAPL power, MSRs, S.M.A.R.T., GPU busy)
-arrive with the helper in M4; logging, tray values and alerts in M5. See
-[PLAN.md](PLAN.md) for the full design and the milestone list.
+remembered between runs); every sensor has a live graph, in its own window or in a panel
+of the main window; and the privileged helper adds the root-only sensors (RAPL power,
+core VIDs and package C-states from MSRs, S.M.A.R.T., GPU engine load). Logging, tray
+values and alerts arrive in M5, packages in M6. See [PLAN.md](PLAN.md) for the full design
+and the milestone list.
 
 ## Building
 
@@ -139,6 +140,22 @@ cargo run --release -p kwinfo-cli --no-default-features -- record --duration 2m 
 Rates and usage come out as recorded whatever the polling interval, because the backends
 take the recorded time of each frame rather than the wall clock.
 
+## Root-only sensors: the helper
+
+CPU package power, core voltages, package C-states, S.M.A.R.T. data and GPU load need
+root. `kwinfo-helper` reads them and nothing else, and never writes to the hardware.
+KWinfo uses it as a D-Bus system service (installed by the packages, or from Settings →
+Helper → Install helper…, which runs `pkexec kwinfo-helper install`), or, without an
+install, started through `pkexec` for one session. The toolbar's Helper button shows its
+state. To see what it reads on a machine:
+
+```bash
+sudo ./target/release/kwinfo-helper probe
+```
+
+See [docs/helper.md](docs/helper.md) for what each source needs, the files an install
+writes, security notes and troubleshooting.
+
 ## Diagnostics and logs
 
 Every KWinfo binary writes a log file per run (on Linux under `~/.local/state/kwinfo/logs/`)
@@ -200,12 +217,12 @@ settings tabs, the context menu, the filter, the dialogs and the replayed 8700K 
 | Path | Contents |
 |---|---|
 | `crates/kwinfo-core` | sensor model, backends, sampler, statistics, history, settings |
-| `crates/kwinfo-ipc` | message types shared by the app and the privileged helper |
-| `crates/kwinfo-helper` | the privileged helper service (stub in M0) |
+| `crates/kwinfo-ipc` | the helper protocol and the client the app and CLI use |
+| `crates/kwinfo-helper` | the privileged helper: providers, stdio and D-Bus service, installer |
 | `crates/kwinfo-app` | the eframe GUI, binary `kwinfo` |
 | `crates/kwinfo-cli` | the command line tool, binary `kwinfo-cli` |
 | `crates/kwinfo-diag` | per-run log files and `kwinfo-cli report` bundles |
-| `packaging/` | desktop file, systemd/D-Bus/polkit files, AppImage script (later milestones) |
+| `packaging/` | the helper's systemd unit, D-Bus and polkit files (desktop file and AppImage script in M6) |
 | `tests/fixtures/` | sysfs/procfs trees used by tests and `--replay` |
 
 ## License

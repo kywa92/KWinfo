@@ -26,6 +26,7 @@ eframe = "0.37.0"
 egui = "0.37.0"
 egui_extras = "0.37.0"
 egui_kittest = { version = "0.37.0", features = ["wgpu", "snapshot", "eframe"] }
+libc = "0.2"
 lm-sensors = "0.5"
 parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -35,6 +36,9 @@ thiserror = "2.0"
 toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# 5.x rather than 6.0: 5.19 is already in the tree through dark-light and accesskit, and
+# 6.0 was three days old when the helper was written.
+zbus = "5.19"
 
 [workspace.lints.rust]
 unsafe_code = "warn"

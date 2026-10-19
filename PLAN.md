@@ -199,6 +199,35 @@ that bus name disappears. The helper never writes to hardware.
 reports averaged power at ≥ 250 ms granularity, which blunts the side channel that made the
 kernel restrict them.
 
+**As built (M4).** The design above holds, with these changes:
+
+- *Pull, not signals.* Methods `Hello(u)`, `Capabilities()`, `Enumerate()` and `Sample()`,
+  each returning the JSON of the matching `kwinfo_ipc::Response`; the client calls
+  `Sample` once per sampling tick. Signals on the system bus can be received by every
+  local user, which would hand out the power readings the kernel restricts; method
+  replies go to the caller only. The helper reads its sources at most every 250 ms and
+  exits after two minutes without calls.
+- *zbus 5.19*, already in the tree through dark-light and accesskit, rather than 6.0,
+  which was three days old. The service is tested on macOS over a peer-to-peer
+  connection; the polkit check runs only on a real system bus.
+- *Providers:* the MSR provider adds only what sysfs lacks (core VIDs, core and package
+  power-limit status, package C2-C10 residency) because the `cpu` backend already shows
+  thermal throttling from the kernel's counters; it is Intel-only for now. The i915 PMU
+  provider reads engine busy and RC6 (not frequencies, which sysfs has); `xe` is later.
+  S.M.A.R.T. devices are their own groups, `smart:<model>:<hash of serial>`.
+- *Install locations:* `kwinfo-helper install` copies itself to
+  `/usr/local/libexec/kwinfo/kwinfo-helper` and writes `/etc/systemd/system/kwinfo-helper.service`,
+  `/usr/share/dbus-1/system-services/io.github.kywa92.KWinfo.Helper.service`,
+  `/etc/dbus-1/system.d/io.github.kywa92.KWinfo.Helper.conf`,
+  `/usr/share/polkit-1/actions/io.github.kywa92.KWinfo.policy` (polkit reads no other
+  directory) and `/etc/modules-load.d/kwinfo.conf` (`msr`, since the sandbox forbids
+  loading modules), then loads `msr`, reloads systemd and D-Bus. A manifest lets
+  `uninstall` remove exactly those files; a packaged helper is never shadowed.
+- *Session helper:* `pkexec <helper> stdio`; from an AppImage the helper is first copied to
+  `$XDG_RUNTIME_DIR/kwinfo/` and run from there. That copy is owned by the user, so another
+  process of the same user could swap it before root runs it; the installed service has
+  no such window, which is why the app recommends installing.
+
 **AppImage path (no system service installed):**
 
 1. The app detects the missing D-Bus service and shows a Setup dialog.
@@ -542,7 +571,7 @@ location, default polling period, minimum kernel, whether alerts land in v1 or v
 | `egui-phosphor` | 0.14 | icon glyphs |
 | `egui_kittest` | 0.37 (ships with egui) | GUI snapshot and interaction tests |
 | `lm-sensors` (+ `sensors-sys`) | 0.5.1 | libsensors labels and compute rules (feature) |
-| `zbus` | 6.0 | D-Bus for the helper service and client |
+| `zbus` | 5.19 | D-Bus for the helper service and client (6.0 was too new; see 3.5) |
 | `ksni` | 0.3.6 | StatusNotifierItem tray |
 | `dark-light` | 3.0 | desktop theme detection and change subscription |
 | `notify-rust` | 4.18 | alert notifications |

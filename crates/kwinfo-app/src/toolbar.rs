@@ -173,22 +173,22 @@ impl KwinfoApp {
         }
     }
 
-    /// Placeholder for the privileged helper's status (milestone M4): a grey dot means
-    /// not running. Opens the Helper tab of the settings.
+    /// The privileged helper's status: a dot coloured by its state (green running, blue
+    /// starting, grey not installed or not used, orange a problem). Opens the Helper tab.
     fn helper_status(&mut self, ui: &mut Ui) {
         let tokens = self.tokens();
-        let response = icons::button(ui, Icon::Shield, Some("Helper"), "Helper: not running")
-            .on_hover_text(
-                "The privileged helper is not running. Root-only sensors (CPU package \
-                 power, S.M.A.R.T., GPU load) arrive with it in milestone M4.",
-            );
+        let state = self.helper.state();
+        let (dot_color, name) = crate::helper::indicator(&state, tokens);
+        let response = icons::button(ui, Icon::Shield, Some("Helper"), name).on_hover_text(
+            format!("{} Click for the helper's settings.", state.describe()),
+        );
         // The status dot sits on the shield's lower right corner.
         let padding = ui.spacing().button_padding.x;
         let dot = pos2(
             response.rect.left() + padding + icons::ICON_SIZE - 1.0,
             response.rect.center().y + 4.0,
         );
-        ui.painter().circle_filled(dot, 3.2, tokens.text_secondary);
+        ui.painter().circle_filled(dot, 3.2, dot_color);
         ui.painter()
             .circle_stroke(dot, 3.2, egui::Stroke::new(1.5, tokens.window_bg));
         if response.clicked() {

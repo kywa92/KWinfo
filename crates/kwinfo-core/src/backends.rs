@@ -22,6 +22,47 @@ use std::path::PathBuf;
 
 pub(crate) use pci::{PCI_IDS_PATHS, is_pci_address};
 
+/// What the privileged helper (`kwinfo-helper`) shares with the backends here, so that
+/// its rows join the same devices: the CPU packages (`cpu:<package>`) and their
+/// topology, the GPUs (`drm:<PCI address>`), and the hashing that keeps serial numbers
+/// out of device ids.
+pub mod shared {
+    pub use super::cpu::{
+        CpuInfo, Thread, package_device, parse_cpuinfo, read_cpuinfo, read_topology,
+    };
+    pub use super::util::{short_hash, slug};
+
+    use crate::model::Device;
+    use crate::sysroot::SysRoot;
+
+    /// A GPU as the DRM subsystem lists it.
+    #[derive(Clone, Debug)]
+    pub struct GpuInfo {
+        /// PCI address, e.g. `0000:00:02.0`.
+        pub address: String,
+        /// The device its rows belong to: `drm:<address>`, `GPU [#0]: ...`.
+        pub device: Device,
+        /// The kernel driver bound to it, e.g. `i915`.
+        pub driver: Option<String>,
+    }
+
+    /// Every PCI GPU with a DRM card, in the order and with the labels the backends use.
+    pub fn gpus(root: &SysRoot) -> Vec<GpuInfo> {
+        let mut names = super::pci::PciNames::default();
+        super::drm::gpus(root, &mut names)
+            .into_iter()
+            .filter_map(|gpu| {
+                let address = gpu.pci_dir.file_name()?.to_str()?.to_string();
+                Some(GpuInfo {
+                    address,
+                    device: gpu.device,
+                    driver: gpu.driver,
+                })
+            })
+            .collect()
+    }
+}
+
 use crate::backend::Backend;
 use crate::mock::MockBackend;
 use crate::recording;
