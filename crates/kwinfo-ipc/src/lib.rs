@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
-pub const DBUS_NAME: &str = "io.github.kylanwalters.KWinfo.Helper";
-pub const DBUS_PATH: &str = "/io/github/kylanwalters/KWinfo/Helper";
-pub const DBUS_INTERFACE: &str = "io.github.kylanwalters.KWinfo.Helper1";
-pub const POLKIT_ACTION: &str = "io.github.kylanwalters.KWinfo.read-sensors";
+pub const DBUS_NAME: &str = "io.github.kywa92.KWinfo.Helper";
+pub const DBUS_PATH: &str = "/io/github/kywa92/KWinfo/Helper";
+pub const DBUS_INTERFACE: &str = "io.github.kywa92.KWinfo.Helper1";
+pub const POLKIT_ACTION: &str = "io.github.kywa92.KWinfo.read-sensors";
 
 /// Which privileged data sources the helper could open on this machine.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

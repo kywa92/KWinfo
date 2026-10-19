@@ -177,7 +177,7 @@ pub fn write(options: ReportOptions) -> anyhow::Result<PathBuf> {
 
 /// `~/.config/kwinfo/config.toml` on Linux, the platform equivalent elsewhere.
 pub fn default_config_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io.github", "kylanwalters", "kwinfo")
+    directories::ProjectDirs::from("io.github", "kywa92", "kwinfo")
         .map(|dirs| dirs.config_dir().join("config.toml"))
 }
 

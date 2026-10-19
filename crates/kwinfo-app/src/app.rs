@@ -25,7 +25,7 @@ use crate::table::{self, TableAction, TableState, TableView};
 use crate::theme::{self, Palette, ThemeTokens};
 
 pub const TITLE: &str = "KWinfo – Sensor Status";
-pub const APP_ID: &str = "io.github.kylanwalters.KWinfo";
+pub const APP_ID: &str = "io.github.kywa92.KWinfo";
 
 /// The polling periods offered in the toolbar and the settings.
 pub const POLLING_CHOICES_MS: [u64; 6] = [250, 500, 1000, 2000, 3000, 5000];

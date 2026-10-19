@@ -84,6 +84,9 @@ All notable changes to KWinfo are documented here. The format follows
 
 ### Changed
 
+- The application id, D-Bus names, polkit action and platform directory qualifier are now
+  `io.github.kywa92.KWinfo`, matching the GitHub repository.
+
 - `kwinfo-cli list` samples through the sampler thread, so devices that several backends
   contribute to are merged as in the GUI.
 - The sampler schedules its first tick after the initial enumeration, so the second tick

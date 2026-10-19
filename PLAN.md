@@ -22,7 +22,7 @@ Assumptions I made. Change any of them and the plan adjusts, nothing below is lo
 - **Distros:** Ubuntu 22.04+ / Debian 12+ for the `.deb`. Any glibc ≥ 2.35 distro for the AppImage. Kernel ≥ 5.15, 6.x recommended.
 - **Desktops:** GNOME and KDE, on both X11 and Wayland. Tray icons on GNOME need the AppIndicator extension.
 - **License:** MIT OR Apache-2.0 for KWinfo code (the Rust norm). Every dependency below is compatible.
-- **Identity:** app ID `io.github.kylanwalters.KWinfo`; binaries `kwinfo`, `kwinfo-helper`, `kwinfo-cli`.
+- **Identity:** app ID `io.github.kywa92.KWinfo`; binaries `kwinfo`, `kwinfo-helper`, `kwinfo-cli`.
 - **Development:** you work on the Mac against a mock backend and captured sensor snapshots; real sensor testing happens on the 8700K machine.
 - **Default polling:** 1000 ms (HWiNFO defaults to 2000 ms). S.M.A.R.T. polled separately every 60 s.
 
@@ -80,8 +80,8 @@ KWinfo/
 ├─ packaging/
 │  ├─ appimage/                    build.sh, AppRun, icon
 │  ├─ systemd/kwinfo-helper.service
-│  ├─ dbus/                        io.github.kylanwalters.KWinfo.Helper.conf and .service
-│  ├─ polkit/                      io.github.kylanwalters.KWinfo.policy
+│  ├─ dbus/                        io.github.kywa92.KWinfo.Helper.conf and .service
+│  ├─ polkit/                      io.github.kywa92.KWinfo.policy
 │  └─ desktop/                     .desktop, icons/hicolor/..., metainfo.xml
 ├─ tests/fixtures/                 captured sysfs snapshots (8700K first), used by tests and the replay backend
 ├─ docs/                           sensors-detect, kernel module hints, troubleshooting, man page
@@ -180,14 +180,14 @@ performance counters need `CAP_PERFMON`. The GUI stays an ordinary user process.
   busy %, RC6 residency, actual and requested frequency → "GPU Core Load" and friends.
   The `xe` driver for newer Intel GPUs has an equivalent PMU.
 
-**Interface:** D-Bus system bus, name `io.github.kylanwalters.KWinfo.Helper`, interface
-`io.github.kylanwalters.KWinfo.Helper1`. Methods `Capabilities()`, `Enumerate() → s` (JSON),
+**Interface:** D-Bus system bus, name `io.github.kywa92.KWinfo.Helper`, interface
+`io.github.kywa92.KWinfo.Helper1`. Methods `Capabilities()`, `Enumerate() → s` (JSON),
 `Subscribe(interval_ms, smart_interval_s)`, `Unsubscribe()`, signal `Samples(s)` (JSON).
 JSON payloads keep the exact same message types usable over the stdio transport. `zbus` 6
 on both sides. The helper exits after two minutes without subscribers and is D-Bus activated
 (`SystemdService=`), so it costs nothing while KWinfo is not running.
 
-**Authorization:** polkit action `io.github.kylanwalters.KWinfo.read-sensors` with
+**Authorization:** polkit action `io.github.kywa92.KWinfo.read-sensors` with
 `allow_active=yes`, `allow_inactive=no`, `allow_any=no`: a logged-in local user gets the data
 with no password, remote or inactive sessions do not. Checked once per caller and cached until
 that bus name disappears. The helper never writes to hardware.
@@ -439,12 +439,12 @@ assets = [
   ["target/release/kwinfo",        "usr/bin/",            "755"],
   ["target/release/kwinfo-cli",    "usr/bin/",            "755"],
   ["target/release/kwinfo-helper", "usr/libexec/kwinfo/", "755"],
-  ["packaging/desktop/io.github.kylanwalters.KWinfo.desktop",      "usr/share/applications/", "644"],
-  ["packaging/desktop/io.github.kylanwalters.KWinfo.metainfo.xml", "usr/share/metainfo/",     "644"],
-  ["packaging/desktop/icons/hicolor/scalable/apps/io.github.kylanwalters.KWinfo.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
-  ["packaging/dbus/io.github.kylanwalters.KWinfo.Helper.conf",    "usr/share/dbus-1/system.d/",         "644"],
-  ["packaging/dbus/io.github.kylanwalters.KWinfo.Helper.service", "usr/share/dbus-1/system-services/",  "644"],
-  ["packaging/polkit/io.github.kylanwalters.KWinfo.policy",       "usr/share/polkit-1/actions/",        "644"],
+  ["packaging/desktop/io.github.kywa92.KWinfo.desktop",      "usr/share/applications/", "644"],
+  ["packaging/desktop/io.github.kywa92.KWinfo.metainfo.xml", "usr/share/metainfo/",     "644"],
+  ["packaging/desktop/icons/hicolor/scalable/apps/io.github.kywa92.KWinfo.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+  ["packaging/dbus/io.github.kywa92.KWinfo.Helper.conf",    "usr/share/dbus-1/system.d/",         "644"],
+  ["packaging/dbus/io.github.kywa92.KWinfo.Helper.service", "usr/share/dbus-1/system-services/",  "644"],
+  ["packaging/polkit/io.github.kywa92.KWinfo.policy",       "usr/share/polkit-1/actions/",        "644"],
   ["docs/kwinfo.1", "usr/share/man/man1/", "644"],
 ]
 [package.metadata.deb.systemd-units]

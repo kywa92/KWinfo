@@ -22,7 +22,7 @@ pub struct LogFile {
 /// `~/.local/state/kwinfo/logs`) on Linux, the local data directory elsewhere, or the
 /// temp directory if neither can be determined.
 pub fn default_log_dir() -> PathBuf {
-    match directories::ProjectDirs::from("io.github", "kylanwalters", "kwinfo") {
+    match directories::ProjectDirs::from("io.github", "kywa92", "kwinfo") {
         Some(dirs) => dirs
             .state_dir()
             .unwrap_or_else(|| dirs.data_local_dir())

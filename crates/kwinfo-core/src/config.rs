@@ -1,6 +1,6 @@
 //! The user's settings, kept in `config.toml` in the XDG configuration directory:
 //! `~/.config/kwinfo/config.toml` on Linux (and
-//! `~/Library/Application Support/io.github.kylanwalters.kwinfo/config.toml` when developing
+//! `~/Library/Application Support/io.github.kywa92.kwinfo/config.toml` when developing
 //! on macOS).
 //!
 //! Per-sensor settings are keyed by [`ChannelId`] and per-device settings by [`DeviceId`].
@@ -504,7 +504,7 @@ impl ConfigFile {
     /// (`$XDG_CONFIG_HOME/kwinfo`, by default `~/.config/kwinfo`, on Linux). `None` when
     /// the home directory is unknown.
     pub fn default_location() -> Option<Self> {
-        directories::ProjectDirs::from("io.github", "kylanwalters", "kwinfo")
+        directories::ProjectDirs::from("io.github", "kywa92", "kwinfo")
             .map(|dirs| Self::new(dirs.config_dir().join(FILE_NAME)))
     }
 

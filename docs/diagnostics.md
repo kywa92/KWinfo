@@ -9,7 +9,7 @@ analysed on another. The `kwinfo-diag` crate provides it; every binary (`kwinfo`
 | Platform | Directory |
 |---|---|
 | Linux | `$XDG_STATE_HOME/kwinfo/logs/`, normally `~/.local/state/kwinfo/logs/` |
-| macOS (development) | `~/Library/Application Support/io.github.kylanwalters.kwinfo/logs/` |
+| macOS (development) | `~/Library/Application Support/io.github.kywa92.kwinfo/logs/` |
 
 One file per run, named `<binary>-<UTC date>-<time>-<pid>.log`, for example
 `kwinfo-20261018-094351-74375.log`. The 30 newest files are kept, within a 50 MB budget;

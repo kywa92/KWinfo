@@ -61,7 +61,7 @@ The row and toolbar icons are painted vector shapes rather than Phosphor glyphs:
 ## Settings
 
 Settings live in `~/.config/kwinfo/config.toml` (`$XDG_CONFIG_HOME/kwinfo/` if set; on
-macOS `~/Library/Application Support/io.github.kylanwalters.kwinfo/`). KWinfo writes the
+macOS `~/Library/Application Support/io.github.kywa92.kwinfo/`). KWinfo writes the
 file a moment after every change and on quit; it is plain TOML keyed by the stable device
 and channel ids that `kwinfo-cli list --ids` prints:
 
