@@ -5,6 +5,8 @@
 //! rows ([`layout`]), taking collapse state, hidden sensors and the quick filter into
 //! account, and `egui_extras` paints only the rows that are on screen.
 
+use std::collections::HashSet;
+
 use egui::{Align, Color32, CornerRadius, Layout as EguiLayout, RichText, Sense, Ui, pos2, vec2};
 use egui_extras::{Column as TableColumn, TableBuilder, TableRow};
 use kwinfo_core::config::{Column, Config};
@@ -90,7 +92,7 @@ impl TableState {
 /// Something only the application can do, asked for by a row or its menu.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TableAction {
-    /// Open a sensor's graph (double-click or menu). Graph windows arrive in M3.
+    /// Open a sensor's graph, or bring it forward (double-click or menu).
     ShowGraph(ChannelId),
     /// Ask the user for a new name for a sensor.
     Rename(ChannelId),
@@ -230,6 +232,8 @@ pub struct TableView<'a> {
     pub snapshot: &'a Snapshot,
     pub config: &'a mut Config,
     pub tokens: &'a ThemeTokens,
+    /// Sensors with an open graph; their rows get a graph marker.
+    pub graphed: &'a HashSet<ChannelId>,
 }
 
 /// Shows the table and returns what the application should do.
@@ -238,6 +242,7 @@ pub fn show(ui: &mut Ui, view: TableView<'_>, state: &mut TableState) -> Vec<Tab
         snapshot,
         config,
         tokens,
+        graphed,
     } = view;
     let layout = layout(snapshot, config, state.active_filter());
     let columns: Vec<Column> = config.columns.visible().collect();
@@ -276,6 +281,7 @@ pub fn show(ui: &mut Ui, view: TableView<'_>, state: &mut TableState) -> Vec<Tab
                     columns: &columns,
                     temperature,
                     filtering: layout.filtered,
+                    graphed,
                     actions: &mut actions,
                 };
                 match layout.rows[row.index()] {
@@ -378,6 +384,7 @@ struct RowContext<'a, 'b> {
     columns: &'b [Column],
     temperature: TemperatureUnit,
     filtering: bool,
+    graphed: &'a HashSet<ChannelId>,
     actions: &'b mut Vec<TableAction>,
 }
 
@@ -553,6 +560,10 @@ fn channel_row(
                     text = text.italics();
                 }
                 ui.label(text);
+                if cx.graphed.contains(&channel.id) {
+                    ui.add_space(4.0);
+                    icons::icon(ui, Icon::Graph, tokens.text_secondary);
+                }
             }
             Column::Current => {
                 if !is_selected {

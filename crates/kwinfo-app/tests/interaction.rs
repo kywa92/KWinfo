@@ -9,7 +9,10 @@ use egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 use kwinfo_app::app::{KwinfoApp, Startup};
-use kwinfo_core::{BackendChoice, ChannelId, Config, ConfigFile, DeviceId, Rgb};
+use kwinfo_app::graphs::Placement;
+use kwinfo_app::settings::SettingsTab;
+use kwinfo_core::config::GraphEntry;
+use kwinfo_core::{BackendChoice, ChannelId, Config, ConfigFile, DeviceId, GraphMode, Rgb};
 
 /// The mock backend with a long polling period: one tick of values at start, then
 /// quiet, so that the UI settles between interactions.
@@ -40,8 +43,11 @@ fn start(startup: Startup) -> Harness<'static, KwinfoApp> {
                 },
             )
         });
+    // The device's name is also on the card of any of its graphs.
     wait_for(&mut harness, |h| {
-        h.query_by_label("CPU [#0]: Mock Hexa-Core 6000X").is_some()
+        h.query_all_by_label("CPU [#0]: Mock Hexa-Core 6000X")
+            .next()
+            .is_some()
     });
     harness.run();
     harness
@@ -427,4 +433,176 @@ fn the_diagnostic_report_holds_what_the_window_shows() {
         "{text}"
     );
     assert!(text.contains("temp.core2  (hidden)"), "{text}");
+}
+
+/// The first graph's settings, as they would be saved.
+fn first_graph(harness: &Harness<'_, KwinfoApp>) -> GraphEntry {
+    harness.state().config().graphs.open[0].clone()
+}
+
+#[test]
+fn graphs_open_once_and_close_from_their_card() {
+    let mut harness = app(Config::default(), None);
+    let core2 = id("cpu:mock/temp.core2");
+    menu(&mut harness, "Core #2", "Show Graph");
+    // The harness cannot open windows, so the graph is in the panel.
+    assert_eq!(
+        harness.state().graph_placement(&harness.ctx),
+        Placement::Panel
+    );
+    assert_eq!(harness.state().open_graphs(), vec![core2.clone()]);
+    assert!(
+        harness
+            .query_by_label("Close the graph of Core #2")
+            .is_some()
+    );
+    assert!(harness.query_by_label("Graph of Core #2").is_some());
+    let entry = first_graph(&harness);
+    assert_eq!(entry.channel, core2);
+    assert!(
+        !entry.autofit,
+        "temperatures start on their 0 to 100 °C range"
+    );
+
+    // Asking again brings the same graph forward instead of opening another.
+    let ctx = harness.ctx.clone();
+    harness.state_mut().open_graph(&ctx, &core2);
+    harness.run();
+    assert_eq!(harness.state().open_graphs().len(), 1);
+
+    harness.get_by_label("Close the graph of Core #2").click();
+    harness.run();
+    assert!(harness.state().open_graphs().is_empty());
+    assert!(harness.state().config().graphs.open.is_empty());
+    assert!(harness.query_by_label("Graph of Core #2").is_none());
+}
+
+#[test]
+fn auto_fit_and_typed_bounds_set_the_range() {
+    let mut harness = app(Config::default(), None);
+    menu(&mut harness, "Core #2", "Show Graph");
+    harness.get_by_label("Auto Fit Core #2").click();
+    harness.run();
+    assert!(first_graph(&harness).autofit);
+
+    let field = harness.get_by_role_and_label(Role::TextInput, "Maximum of Core #2");
+    field.focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Maximum of Core #2")
+        .type_text("90");
+    harness.key_press(Key::Enter);
+    harness.run();
+    let entry = first_graph(&harness);
+    assert!(!entry.autofit, "typing a bound fixes the range");
+    assert_eq!(entry.y_max, Some(90.0));
+    assert!(entry.y_min.is_some_and(|min| min < 90.0));
+
+    // A minimum above the maximum is refused.
+    let field = harness.get_by_role_and_label(Role::TextInput, "Minimum of Core #2");
+    field.focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Minimum of Core #2")
+        .type_text("95");
+    harness.key_press(Key::Enter);
+    harness.run();
+    assert_eq!(first_graph(&harness).y_max, Some(90.0));
+    assert!(first_graph(&harness).y_min.is_some_and(|min| min < 90.0));
+}
+
+#[test]
+fn reset_clears_the_sensors_statistics() {
+    let mut harness = app(Config::default(), None);
+    let core2 = id("cpu:mock/temp.core2");
+    menu(&mut harness, "Core #2", "Show Graph");
+    let count = |h: &Harness<'_, KwinfoApp>| {
+        h.state()
+            .latest_snapshot()
+            .find(&core2)
+            .map_or(0, |c| c.stats.count())
+    };
+    assert!(count(&harness) > 0);
+    harness.get_by_label("Reset Core #2").click();
+    harness.run();
+    wait_for(&mut harness, |h| count(h) == 0);
+}
+
+#[test]
+fn open_graphs_come_back_after_a_restart() {
+    let mut config = Config::default();
+    let mut entry = GraphEntry::new(id("cpu:mock/power.package"));
+    entry.span_s = 60;
+    config.graphs.open.push(entry);
+    // A sensor this machine does not have: kept in the settings, not shown.
+    config
+        .graphs
+        .open
+        .push(GraphEntry::new(id("gone:device/temp1")));
+    let mut harness = app(config, None);
+    harness.run();
+    assert!(
+        harness
+            .query_by_label("Close the graph of CPU Package Power")
+            .is_some()
+    );
+    assert_eq!(harness.state().open_graphs().len(), 2);
+    assert_eq!(harness.state().config().graphs.open.len(), 2);
+    assert_eq!(first_graph(&harness).span_s, 60);
+
+    harness.get_by_label("Close all graphs").click();
+    harness.run();
+    assert!(harness.state().config().graphs.open.is_empty());
+}
+
+#[test]
+fn the_graphs_settings_choose_placement_and_history() {
+    let mut harness = app(Config::default(), None);
+    harness.state_mut().set_settings_tab(SettingsTab::Graphs);
+    harness.state_mut().set_settings_open(true);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Separate windows")
+        .click();
+    harness.run();
+    assert_eq!(harness.state().config().graphs.mode, GraphMode::Windows);
+    // Still the panel: the harness cannot open windows.
+    assert_eq!(
+        harness.state().graph_placement(&harness.ctx),
+        Placement::Panel
+    );
+
+    harness
+        .get_by_role_and_label(Role::ComboBox, "History")
+        .click();
+    harness.run();
+    harness.get_by_label("10 min").click();
+    harness.run();
+    assert_eq!(harness.state().config().graphs.history_minutes, 10);
+}
+
+#[test]
+fn the_toolbar_menu_closes_all_graphs() {
+    let mut harness = app(Config::default(), None);
+    menu(&mut harness, "Core #2", "Show Graph");
+    menu(&mut harness, "Core #4", "Show Graph");
+    assert_eq!(harness.state().open_graphs().len(), 2);
+    harness
+        .get_by_role_and_label(Role::Button, "Graphs")
+        .click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Tile graph windows").is_some(),
+        "listed, though disabled with the panel"
+    );
+    // The panel's header has the same button; the menu adds the second one.
+    let buttons: Vec<_> = harness
+        .get_all_by_role_and_label(Role::Button, "Close all graphs")
+        .collect();
+    assert_eq!(buttons.len(), 2);
+    buttons.last().unwrap().click();
+    harness.run();
+    assert!(harness.state().open_graphs().is_empty());
 }

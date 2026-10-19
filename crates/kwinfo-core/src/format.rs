@@ -25,6 +25,86 @@ impl TemperatureUnit {
             TemperatureUnit::Fahrenheit => celsius * 9.0 / 5.0 + 32.0,
         }
     }
+
+    /// The inverse of [`TemperatureUnit::convert`].
+    pub fn to_celsius(self, value: f64) -> f64 {
+        match self {
+            TemperatureUnit::Celsius => value,
+            TemperatureUnit::Fahrenheit => (value - 32.0) * 5.0 / 9.0,
+        }
+    }
+}
+
+/// `value`, in `unit`'s base unit, in the unit it is shown in: temperatures in the chosen
+/// temperature unit, everything else unchanged.
+pub fn to_display(value: f64, unit: Unit, temperature: TemperatureUnit) -> f64 {
+    if unit == Unit::Celsius {
+        temperature.convert(value)
+    } else {
+        value
+    }
+}
+
+/// The inverse of [`to_display`].
+pub fn from_display(value: f64, unit: Unit, temperature: TemperatureUnit) -> f64 {
+    if unit == Unit::Celsius {
+        temperature.to_celsius(value)
+    } else {
+        value
+    }
+}
+
+/// A value for an edit field, such as a graph's range: the number as the table shows it,
+/// without the unit symbol, except that byte sizes keep their scaled unit (`1.5 GB`).
+pub fn format_input(value: f64, unit: Unit, decimals: u8, temperature: TemperatureUnit) -> String {
+    if !value.is_finite() {
+        return String::new();
+    }
+    match unit {
+        Unit::Bytes => format_bytes(value, decimals),
+        Unit::BytesPerSecond => format!("{}/s", format_bytes(value, decimals)),
+        _ => format_number(to_display(value, unit, temperature), decimals),
+    }
+}
+
+/// Reads what the user typed into a value field, returning the value in `unit`'s base
+/// unit. Accepts surrounding spaces, thousands separators and the unit symbols the table
+/// shows (`48.5 °C`, `1,200 MHz`); byte sizes accept `K`, `M`, `G`, `T` and `P` (powers
+/// of 1024, as the table uses), so `1.5 GB` and `250M` both work.
+pub fn parse_input(text: &str, unit: Unit, temperature: TemperatureUnit) -> Option<f64> {
+    let text: String = text.trim().chars().filter(|&c| c != ',').collect();
+    let mut end = 0;
+    let mut seen_digit = false;
+    let mut seen_dot = false;
+    for (i, c) in text.char_indices() {
+        match c {
+            '+' | '-' if i == 0 => {}
+            '0'..='9' => seen_digit = true,
+            '.' if !seen_dot => seen_dot = true,
+            _ => break,
+        }
+        end = i + c.len_utf8();
+    }
+    if !seen_digit {
+        return None;
+    }
+    let number: f64 = text[..end].parse().ok()?;
+    let rest = text[end..].trim_start();
+    let factor = match unit {
+        Unit::Bytes | Unit::BytesPerSecond => {
+            match rest.chars().next().map(|c| c.to_ascii_lowercase()) {
+                Some('k') => 1024f64,
+                Some('m') => 1024f64.powi(2),
+                Some('g') => 1024f64.powi(3),
+                Some('t') => 1024f64.powi(4),
+                Some('p') => 1024f64.powi(5),
+                _ => 1.0,
+            }
+        }
+        _ => 1.0,
+    };
+    let value = from_display(number * factor, unit, temperature);
+    value.is_finite().then_some(value)
 }
 
 /// Shown for a channel that has no reading.
@@ -171,5 +251,66 @@ mod tests {
             ),
             "2.5 MB/s"
         );
+    }
+
+    #[test]
+    fn display_conversion_only_touches_temperatures() {
+        let f = TemperatureUnit::Fahrenheit;
+        assert_eq!(to_display(100.0, Unit::Celsius, f), 212.0);
+        assert_eq!(from_display(212.0, Unit::Celsius, f), 100.0);
+        assert_eq!(to_display(1.2, Unit::Volt, f), 1.2);
+        assert_eq!(from_display(1.2, Unit::Volt, f), 1.2);
+        assert!((f.to_celsius(f.convert(37.4)) - 37.4).abs() < 1e-9);
+    }
+
+    #[test]
+    fn inputs_format_without_the_unit_except_for_bytes() {
+        let c = TemperatureUnit::Celsius;
+        assert_eq!(format_input(100.0, Unit::Celsius, 1, c), "100.0");
+        assert_eq!(
+            format_input(100.0, Unit::Celsius, 1, TemperatureUnit::Fahrenheit),
+            "212.0"
+        );
+        assert_eq!(format_input(4300.0, Unit::MegaHertz, 1, c), "4,300.0");
+        assert_eq!(
+            format_input(1536.0 * 1024.0 * 1024.0, Unit::Bytes, 1, c),
+            "1.5 GB"
+        );
+        assert_eq!(
+            format_input(2.5 * 1024.0 * 1024.0, Unit::BytesPerSecond, 1, c),
+            "2.5 MB/s"
+        );
+        assert_eq!(format_input(f64::NAN, Unit::Volt, 3, c), "");
+    }
+
+    #[test]
+    fn inputs_parse_back_with_or_without_units() {
+        let c = TemperatureUnit::Celsius;
+        assert_eq!(parse_input(" 48.5 °C ", Unit::Celsius, c), Some(48.5));
+        assert_eq!(
+            parse_input("212", Unit::Celsius, TemperatureUnit::Fahrenheit),
+            Some(100.0)
+        );
+        assert_eq!(parse_input("1,200 MHz", Unit::MegaHertz, c), Some(1200.0));
+        assert_eq!(parse_input("-0.5", Unit::Volt, c), Some(-0.5));
+        assert_eq!(parse_input("+3", Unit::Watt, c), Some(3.0));
+        assert_eq!(
+            parse_input("1.5 GB", Unit::Bytes, c),
+            Some(1.5 * 1024f64.powi(3))
+        );
+        assert_eq!(
+            parse_input("250M", Unit::BytesPerSecond, c),
+            Some(250.0 * 1024f64.powi(2))
+        );
+        assert_eq!(parse_input("512 B", Unit::Bytes, c), Some(512.0));
+        assert_eq!(
+            parse_input("12 MB", Unit::Watt, c),
+            Some(12.0),
+            "prefixes only scale bytes"
+        );
+        assert_eq!(parse_input("", Unit::Volt, c), None);
+        assert_eq!(parse_input("abc", Unit::Volt, c), None);
+        assert_eq!(parse_input("-", Unit::Volt, c), None);
+        assert_eq!(parse_input(".", Unit::Volt, c), None);
     }
 }

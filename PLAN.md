@@ -294,13 +294,20 @@ change and on quit ("Save & Quit").
 - Each graph is an eframe deferred viewport (`show_viewport_deferred`), so it is a real
   native window the window manager can move, tile and close. Deferred viewports repaint on
   their own; they read the shared `Snapshot` and are told to repaint on each tick.
-- `egui_plot::Plot` with a `Line` and `fill`, horizontal grid, x axis in seconds ago, no
-  legend. Auto Fit on: bounds follow the data. Auto Fit off: the two edit fields set the y
+- *As built (M3):* the graph is painted with egui's painter (`crates/kwinfo-app/src/graph.rs`)
+  instead of `egui_plot`: the HWiNFO look is fixed, there is no zoom or pan to switch off,
+  the pictures are deterministic for snapshot tests, and more readings than pixels are
+  reduced to each pixel column's minimum and maximum so spikes stay visible. Horizontal
+  grid in ten bands, vertical lines on whole multiples of a time step (they move with the
+  readings), the span in the corner, hover readout. Auto Fit on: bounds follow the data
+  with 5 % headroom, rounded to 1/2/5 steps. Auto Fit off: the two edit fields set the y
   range. Reset clears the history and the min/max markers for that sensor.
 - Wayland does not let applications choose window positions. Sizes are always saved;
   positions are restored on X11, and on Wayland the compositor's own placement rules apply.
-  The Graphs panel mode (graphs as `egui::Window`s inside the main viewport) gives full
-  control everywhere and is the default when the session is Wayland.
+  The Graphs panel mode gives full control everywhere and is the default when the session
+  is Wayland. *As built:* the panel is docked on the right of the main window with the
+  graphs as cards in a grid, rather than as free-floating `egui::Window`s, which would
+  cover the sensor table.
 - Tile command arranges windows in an N-column grid like `reference5.png`.
 
 ### 4.3 Tray
@@ -531,7 +538,7 @@ location, default polling period, minimum kernel, whether alerts land in v1 or v
 
 | Crate | Version | Role |
 |---|---|---|
-| `egui`, `eframe`, `egui_extras`, `egui_plot` | 0.37.0 | GUI, table, plots, native viewports |
+| `egui`, `eframe`, `egui_extras` | 0.37.0 | GUI, table, native viewports (graphs are painted; `egui_plot` turned out unnecessary) |
 | `egui-phosphor` | 0.14 | icon glyphs |
 | `egui_kittest` | 0.37 (ships with egui) | GUI snapshot and interaction tests |
 | `lm-sensors` (+ `sensors-sys`) | 0.5.1 | libsensors labels and compute rules (feature) |

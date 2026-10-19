@@ -11,12 +11,12 @@ pub struct History {
 }
 
 impl History {
-    /// `capacity` is clamped to at least one point.
+    /// `capacity` is clamped to at least one point. Memory grows with the points actually
+    /// recorded, not with the capacity, so a long history costs nothing until it fills.
     pub fn new(capacity: usize) -> Self {
-        let capacity = capacity.max(1);
         Self {
-            capacity,
-            points: VecDeque::with_capacity(capacity),
+            capacity: capacity.max(1),
+            points: VecDeque::new(),
         }
     }
 
@@ -55,6 +55,16 @@ impl History {
     /// Points from oldest to newest.
     pub fn iter(&self) -> impl Iterator<Item = (f64, f32)> + '_ {
         self.points.iter().copied()
+    }
+
+    /// The points at or after `start` (seconds), oldest first, plus the last point
+    /// before it, so that a graph's line can enter from its left edge.
+    pub fn points_since(&self, start: f64) -> Vec<(f64, f32)> {
+        let first = self.points.partition_point(|&(t, _)| t < start);
+        self.points
+            .range(first.saturating_sub(1)..)
+            .copied()
+            .collect()
     }
 
     pub fn latest(&self) -> Option<(f64, f32)> {
@@ -118,5 +128,22 @@ mod tests {
         h.set_capacity(0);
         assert_eq!(h.capacity(), 1);
         assert_eq!(h.len(), 1);
+    }
+
+    #[test]
+    fn points_since_includes_the_point_before_the_window() {
+        let mut h = History::new(10);
+        for i in 0..6 {
+            h.push(f64::from(i), Some(f64::from(i) * 2.0));
+        }
+        let times = |points: Vec<(f64, f32)>| points.iter().map(|&(t, _)| t).collect::<Vec<_>>();
+        assert_eq!(times(h.points_since(3.5)), vec![3.0, 4.0, 5.0]);
+        assert_eq!(times(h.points_since(3.0)), vec![2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(
+            times(h.points_since(-10.0)),
+            vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+        );
+        assert_eq!(times(h.points_since(99.0)), vec![5.0]);
+        assert!(History::new(3).points_since(0.0).is_empty());
     }
 }

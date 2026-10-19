@@ -2081,6 +2081,7 @@ dependencies = [
  "egui_kittest",
  "kwinfo-core",
  "kwinfo-diag",
+ "parking_lot",
  "tempfile",
  "tracing",
 ]

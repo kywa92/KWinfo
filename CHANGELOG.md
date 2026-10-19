@@ -6,7 +6,23 @@ All notable changes to KWinfo are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- An app-level test flaked on slow CI runners (`Harness::run exceeded max_steps`); the
+  interaction tests now allow more frames to settle and step while background work runs.
+
 ### Added
+
+- Graphs (milestone M3): a live, HWiNFO-style graph per sensor, opened by double-clicking
+  a row or from its menu. Filled area under a line on a grid, spikes kept when there are
+  more readings than pixels, gaps for failed readings, a hover readout, and a column with
+  editable range bounds, the current value, Auto Fit and Reset. Each graph is its own
+  native window (an eframe deferred viewport) or, on Wayland by default, a card in a
+  panel of the main window. Tile and Close all in a toolbar menu, a time span per graph
+  (right-click), a history length setting, and open graphs restored after a restart with
+  their range, size and (outside Wayland) position.
+- `[graphs]` section in `config.toml`, `Sampler::set_history_capacity`,
+  `History::points_since`, and value parsing for edit fields (`kwinfo_core::parse_input`).
 
 - Diagnostic logging (`kwinfo-diag`): a log file per run with a machine header, panic
   backtraces, user-action and sampler-health lines, and `kwinfo-cli report` bundling the

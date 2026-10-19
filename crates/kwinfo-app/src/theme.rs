@@ -165,7 +165,22 @@ impl ThemeTokens {
     /// one. Hue and saturation stay, so a custom colour is recognisably the same in both
     /// themes (PLAN.md 5.1).
     pub fn readable(&self, color: Color32, min_contrast: f64) -> Color32 {
-        let backgrounds = self.row_backgrounds();
+        self.readable_on(color, &self.row_backgrounds(), min_contrast)
+    }
+
+    /// A graph's line colour for series colour `base`: readable as a graphic on the
+    /// graph's background. The area under the line uses `base` itself, translucent.
+    pub fn graph_line(&self, base: Color32) -> Color32 {
+        self.readable_on(base, &[self.graph_bg], GRAPHIC_CONTRAST)
+    }
+
+    /// [`ThemeTokens::readable`] against `backgrounds` instead of the table's.
+    pub fn readable_on(
+        &self,
+        color: Color32,
+        backgrounds: &[Color32],
+        min_contrast: f64,
+    ) -> Color32 {
         let ok = |c: Color32| {
             backgrounds
                 .iter()

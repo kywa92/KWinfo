@@ -51,7 +51,7 @@ pub fn channel(
 
     if ui
         .button(RichText::new("Show Graph").strong())
-        .on_hover_text("Graph windows arrive in milestone M3. Double-clicking a row does the same.")
+        .on_hover_text("A live graph of this sensor. Double-clicking the row does the same.")
         .clicked()
     {
         actions.push(TableAction::ShowGraph(id.clone()));

@@ -4,12 +4,13 @@ A Linux hardware monitor in the spirit of HWiNFO64's *Sensor Status* window and 
 floating sensor graphs. Written in Rust with [egui](https://github.com/emilk/egui), shipped
 as a `.deb` and an AppImage, with dark and light themes.
 
-**Status:** milestone M2. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
+**Status:** milestone M3. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
 `block`, `memory`, `network`, `power_supply`, plus lm-sensors labels) read real hardware on
-Linux, and the Sensor Status window is complete: a tree-table with sub-groups, per-kind
+Linux; the Sensor Status window is complete (a tree-table with sub-groups, per-kind
 icons, context menus, a quick filter, a toolbar and a settings dialog, with every setting
-remembered between runs. Graph windows arrive in M3; root-only sensors (RAPL power, MSRs,
-S.M.A.R.T., GPU busy) with the helper in M4; logging, tray values and alerts in M5. See
+remembered between runs); and every sensor has a live graph, in its own window or in a
+panel of the main window. Root-only sensors (RAPL power, MSRs, S.M.A.R.T., GPU busy)
+arrive with the helper in M4; logging, tray values and alerts in M5. See
 [PLAN.md](PLAN.md) for the full design and the milestone list.
 
 ## Building
@@ -41,8 +42,7 @@ and `compute` statements of `/etc/sensors3.conf` and `/etc/sensors.d/`. Build wi
 - Devices are group rows; click one to collapse or expand it. Runs of similar rows
   (Core Clocks, Thread Usage, C-State Residency, Distance to TjMAX, …) are nested in
   sub-groups whose row shows the lowest minimum and highest maximum of its members.
-- Right-click a sensor for Show Graph (graph windows arrive in M3; a double-click does the
-  same), Rename, Hide, Custom colour, Disable monitoring, Reset this sensor and Copy
+- Right-click a sensor for Show Graph (a double-click does the same), Rename, Hide, Custom colour, Disable monitoring, Reset this sensor and Copy
   value. Right-click a device to collapse it, reset its values, disable monitoring of the
   whole device or copy its values as text; right-click the header to choose columns.
 - Hidden sensors are counted in the title, `[N value(s) hidden]`. Settings → General (or
@@ -57,6 +57,25 @@ and `compute` statements of `/etc/sensors3.conf` and `/etc/sensors.d/`. Build wi
 
 The row and toolbar icons are painted vector shapes rather than Phosphor glyphs:
 `egui-phosphor` has no release for egui 0.37 yet.
+
+## Graphs
+
+- Double-click a sensor (or right-click it, Show Graph) for a live graph like HWiNFO's:
+  the readings as a filled area under a line on a grid, and beside it the top of the
+  range, the current value, Auto Fit, Reset and the bottom of the range. Rows with an
+  open graph show a small graph mark.
+- Temperatures and loads start on a fixed 0 to 100 range; everything else starts with
+  Auto Fit, which follows the readings with some headroom. Typing a value into the top or
+  bottom field fixes the range (`1.5 GB`, `250M` and `48.5 °C` all work); Reset clears the
+  sensor's graph, minimum, maximum and average. Hover the graph to read any point.
+- Right-click a graph to choose how much of it to show (1 minute to 2 hours, within the
+  history kept) or to close it. Settings → Graphs sets the history length (10 minutes
+  to 2 hours; at most 14,400 readings per sensor).
+- Graphs open in their own windows, which come back at their size and place after a
+  restart. On Wayland the desktop decides where windows open, so the Automatic setting
+  shows the graphs in a panel on the right of the main window instead; the toolbar's
+  Graphs menu and Settings → Graphs switch between the two. The same menu tiles the
+  graph windows beside the main window and closes them all.
 
 ## Settings
 

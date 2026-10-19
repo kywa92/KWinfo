@@ -26,6 +26,17 @@
 //! width = 780.0
 //! height = 720.0
 //!
+//! [graphs]
+//! mode = "auto"
+//! history_minutes = 60
+//!
+//! [[graphs.open]]
+//! channel = "cpu:0/temp.package"
+//! span_s = 600
+//! autofit = false
+//! width = 520.0
+//! height = 190.0
+//!
 //! [devices."cpu:0"]
 //! collapsed_groups = ["Thread Usage"]
 //!
@@ -66,6 +77,8 @@ pub struct Config {
     pub columns: Columns,
     #[serde(skip_serializing_if = "WindowSettings::is_default")]
     pub window: WindowSettings,
+    #[serde(skip_serializing_if = "Graphs::is_default")]
+    pub graphs: Graphs,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub devices: BTreeMap<DeviceId, DeviceSettings>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -260,6 +273,158 @@ impl WindowSettings {
     }
 }
 
+/// How graphs are shown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphMode {
+    /// Separate windows, except on Wayland: there the desktop, not the application,
+    /// decides where windows go, so graphs are shown inside the main window instead.
+    #[default]
+    Auto,
+    /// Every graph in its own window.
+    Windows,
+    /// All graphs in a panel on the right of the main window.
+    Panel,
+}
+
+impl GraphMode {
+    pub const ALL: [GraphMode; 3] = [GraphMode::Auto, GraphMode::Windows, GraphMode::Panel];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            GraphMode::Auto => "Automatic",
+            GraphMode::Windows => "Separate windows",
+            GraphMode::Panel => "Inside the main window",
+        }
+    }
+}
+
+/// The history lengths offered in the settings, in minutes.
+pub const HISTORY_MINUTES_CHOICES: [u32; 4] = [10, 30, 60, 120];
+/// How much history each sensor keeps until the user chooses otherwise.
+pub const DEFAULT_HISTORY_MINUTES: u32 = 60;
+/// The most readings kept per sensor whatever the history length and polling period
+/// (four hours at one reading a second), which bounds memory use.
+pub const MAX_HISTORY_POINTS: usize = 14_400;
+/// The time spans a graph can show, in seconds.
+pub const SPAN_CHOICES_S: [u32; 6] = [60, 300, 600, 1800, 3600, 7200];
+/// The time span of a new graph.
+pub const DEFAULT_SPAN_S: u32 = 600;
+
+/// Graph settings and the graphs that are open.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Graphs {
+    pub mode: GraphMode,
+    /// How much history every sensor keeps for its graph, in minutes.
+    pub history_minutes: u32,
+    /// Width of the graph panel inside the main window, in points; `None` is the default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel_width: Option<f32>,
+    /// The open graphs, in the order they were opened.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open: Vec<GraphEntry>,
+}
+
+impl Default for Graphs {
+    fn default() -> Self {
+        Self {
+            mode: GraphMode::Auto,
+            history_minutes: DEFAULT_HISTORY_MINUTES,
+            panel_width: None,
+            open: Vec::new(),
+        }
+    }
+}
+
+impl Graphs {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The history length in seconds.
+    pub fn history_s(&self) -> u32 {
+        self.history_minutes.clamp(1, 24 * 60) * 60
+    }
+
+    /// The points each sensor keeps at polling period `interval_ms`: the history length,
+    /// bounded by [`MAX_HISTORY_POINTS`].
+    pub fn history_points(&self, interval_ms: u64) -> usize {
+        let points = u64::from(self.history_s()) * 1000 / interval_ms.max(1);
+        (points as usize).clamp(2, MAX_HISTORY_POINTS)
+    }
+
+    pub fn entry(&self, id: &ChannelId) -> Option<&GraphEntry> {
+        self.open.iter().find(|g| &g.channel == id)
+    }
+
+    /// Drops entries without a sensor and repeated ones (a hand-edited file may have them).
+    fn prune(&mut self) {
+        let mut seen = HashSet::new();
+        self.open
+            .retain(|g| !g.channel.as_str().is_empty() && seen.insert(g.channel.clone()));
+    }
+}
+
+/// One open graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GraphEntry {
+    pub channel: ChannelId,
+    /// How much time the graph shows, in seconds.
+    pub span_s: u32,
+    /// The y range follows the readings ("Auto Fit"); otherwise it is fixed.
+    pub autofit: bool,
+    /// The fixed y range, in the channel's base unit (°C, V, W, bytes, ...). `None` uses
+    /// the default for the kind of reading, or the range shown when Auto Fit went off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y_min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y_max: Option<f64>,
+    /// The graph window's inner size, in points.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<f32>,
+    /// The graph window's position, in points, on desktops that let applications place
+    /// their windows (not on Wayland).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f32>,
+}
+
+impl Default for GraphEntry {
+    fn default() -> Self {
+        Self::new(ChannelId::from_raw(""))
+    }
+}
+
+impl GraphEntry {
+    /// A graph of `channel` with the default time span, following its readings.
+    pub fn new(channel: ChannelId) -> Self {
+        Self {
+            channel,
+            span_s: DEFAULT_SPAN_S,
+            autofit: true,
+            y_min: None,
+            y_max: None,
+            width: None,
+            height: None,
+            x: None,
+            y: None,
+        }
+    }
+
+    pub fn size(&self) -> Option<[f32; 2]> {
+        Some([self.width?, self.height?])
+    }
+
+    pub fn position(&self) -> Option<[f32; 2]> {
+        Some([self.x?, self.y?])
+    }
+}
+
 /// Settings of one device (a group row of the table).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -423,10 +588,12 @@ impl Config {
             .collect()
     }
 
-    /// Removes entries that only hold defaults.
+    /// Removes entries that only hold defaults, and graph entries that name no sensor
+    /// or repeat one.
     pub fn prune(&mut self) {
         self.channels.retain(|_, c| !c.is_default());
         self.devices.retain(|_, d| !d.is_default());
+        self.graphs.prune();
     }
 }
 
@@ -771,5 +938,88 @@ mod tests {
 
         let (_, note) = file.load_or_default();
         assert!(note.is_none(), "a missing file is not an error");
+    }
+
+    #[test]
+    fn graphs_round_trip_and_stay_out_of_the_file_when_default() {
+        assert!(!Config::default().to_toml().unwrap().contains("graphs"));
+
+        let mut config = Config::default();
+        config.graphs.mode = GraphMode::Panel;
+        config.graphs.history_minutes = 30;
+        config.graphs.panel_width = Some(420.0);
+        let mut entry = GraphEntry::new(ChannelId::from_raw("cpu:0/temp.package"));
+        entry.autofit = false;
+        entry.y_min = Some(20.0);
+        entry.y_max = Some(90.0);
+        entry.width = Some(520.0);
+        entry.height = Some(190.0);
+        entry.x = Some(800.0);
+        entry.y = Some(40.0);
+        config.graphs.open.push(entry.clone());
+        config
+            .graphs
+            .open
+            .push(GraphEntry::new(ChannelId::from_raw("cpu:0/usage.total")));
+
+        let text = config.to_toml().unwrap();
+        assert!(text.contains("[[graphs.open]]"), "{text}");
+        assert!(text.contains("mode = \"panel\""), "{text}");
+        let back = Config::from_toml(&text).unwrap();
+        assert_eq!(back.graphs, config.graphs);
+        assert_eq!(back.graphs.entry(&entry.channel), Some(&entry));
+        assert_eq!(entry.size(), Some([520.0, 190.0]));
+        assert_eq!(entry.position(), Some([800.0, 40.0]));
+    }
+
+    #[test]
+    fn hand_edited_graph_entries_are_cleaned_up() {
+        let config = Config::from_toml(
+            r#"
+            [graphs]
+            history_minutes = 10
+
+            [[graphs.open]]
+            channel = "cpu:0/temp1"
+
+            [[graphs.open]]
+            span_s = 60
+
+            [[graphs.open]]
+            channel = "cpu:0/temp1"
+            span_s = 60
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.graphs.open.len(), 3, "parsing keeps everything");
+        assert_eq!(config.graphs.open[0].span_s, DEFAULT_SPAN_S);
+        assert!(config.graphs.open[0].autofit);
+        let mut pruned = config.clone();
+        pruned.prune();
+        assert_eq!(pruned.graphs.open.len(), 1);
+        assert_eq!(pruned.graphs.open[0].channel.as_str(), "cpu:0/temp1");
+        assert_eq!(
+            pruned.graphs.open[0].span_s, DEFAULT_SPAN_S,
+            "the first entry wins"
+        );
+    }
+
+    #[test]
+    fn history_points_follow_the_polling_period_within_bounds() {
+        let graphs = Graphs::default();
+        assert_eq!(graphs.history_s(), 3600);
+        assert_eq!(graphs.history_points(1000), 3600);
+        assert_eq!(graphs.history_points(2000), 1800);
+        assert_eq!(graphs.history_points(250), MAX_HISTORY_POINTS);
+        let short = Graphs {
+            history_minutes: 10,
+            ..Graphs::default()
+        };
+        assert_eq!(short.history_points(5000), 120);
+        let silly = Graphs {
+            history_minutes: 0,
+            ..Graphs::default()
+        };
+        assert_eq!(silly.history_s(), 60);
     }
 }

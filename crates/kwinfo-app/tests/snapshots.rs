@@ -85,10 +85,12 @@ fn harness(palette: Palette, config: Config) -> Harness<'static, (Config, TableS
         .build_ui_state(
             move |ui, (config, state): &mut (Config, TableState)| {
                 egui::Frame::new().fill(tokens.table_bg).show(ui, |ui| {
+                    let graphed = std::collections::HashSet::new();
                     let view = TableView {
                         snapshot: &snapshot,
                         config,
                         tokens,
+                        graphed: &graphed,
                     };
                     table::show(ui, view, state);
                 });

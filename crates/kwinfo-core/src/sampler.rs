@@ -101,6 +101,7 @@ impl Snapshot {
 
 enum Command {
     SetInterval(Duration),
+    SetHistoryCapacity(usize),
     SetDisabled {
         channels: HashSet<ChannelId>,
         devices: HashSet<DeviceId>,
@@ -152,6 +153,11 @@ impl Sampler {
 
     pub fn set_interval(&self, interval: Duration) {
         self.send(Command::SetInterval(interval));
+    }
+
+    /// Changes how many points each channel's history keeps; shrinking drops the oldest.
+    pub fn set_history_capacity(&self, capacity: usize) {
+        self.send(Command::SetHistoryCapacity(capacity));
     }
 
     /// Resets minimum, maximum and average of every channel.
@@ -323,6 +329,12 @@ impl Worker {
     /// Returns `false` when the thread should stop.
     fn handle(&mut self, command: Command) -> bool {
         match command {
+            Command::SetHistoryCapacity(capacity) => {
+                self.history_capacity = capacity.max(1);
+                for history in self.shared.history.lock().values_mut() {
+                    history.set_capacity(self.history_capacity);
+                }
+            }
             Command::SetInterval(interval) => {
                 self.interval = interval.max(MIN_INTERVAL);
                 self.next_tick = Instant::now();
@@ -989,5 +1001,25 @@ mod tests {
                 .all(|c| c.stats.min().is_some_and(|m| m > before.tick as f64))
         });
         assert!(after.channels().all(|c| c.stats.count() < after.tick));
+    }
+
+    #[test]
+    fn history_capacity_changes_apply_to_existing_channels() {
+        let sampler = Sampler::start(vec![Box::new(Counter::new())], fast(64));
+        wait_until(&sampler, |s| s.tick >= 6);
+        let id = ChannelId::from_raw("test:counter/n");
+        sampler.set_history_capacity(3);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let (len, capacity) = sampler
+                .with_history(&id, |h| (h.len(), h.capacity()))
+                .unwrap();
+            if capacity == 3 {
+                assert!(len <= 3);
+                break;
+            }
+            assert!(Instant::now() < deadline, "the capacity never changed");
+            thread::sleep(Duration::from_millis(2));
+        }
     }
 }

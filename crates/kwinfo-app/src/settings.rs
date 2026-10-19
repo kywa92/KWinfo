@@ -1,13 +1,14 @@
-//! The settings window (PLAN.md 4.4): General, Theme, Columns and Hidden sensors, plus
-//! the Logging, Helper and Alerts tabs that later milestones fill in.
+//! The settings window (PLAN.md 4.4): General, Theme, Columns, Graphs and Hidden sensors,
+//! plus the Logging, Helper and Alerts tabs that later milestones fill in.
 
-use egui::{Align, Button, Checkbox, Layout, RichText, ScrollArea, Spinner, Ui};
-use kwinfo_core::config::Column;
-use kwinfo_core::{ChannelId, DeviceId, Snapshot, TemperatureUnit, ThemeMode};
+use egui::{Align, Button, Checkbox, ComboBox, Layout, RichText, ScrollArea, Spinner, Ui};
+use kwinfo_core::config::{Column, HISTORY_MINUTES_CHOICES};
+use kwinfo_core::{ChannelId, DeviceId, GraphMode, Snapshot, TemperatureUnit, ThemeMode};
 
 use kwinfo_diag::action;
 
 use crate::app::KwinfoApp;
+use crate::graph::span_label;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SettingsTab {
@@ -15,6 +16,7 @@ pub enum SettingsTab {
     General,
     Theme,
     Columns,
+    Graphs,
     Hidden,
     Logging,
     Helper,
@@ -22,10 +24,11 @@ pub enum SettingsTab {
 }
 
 impl SettingsTab {
-    pub const ALL: [SettingsTab; 7] = [
+    pub const ALL: [SettingsTab; 8] = [
         SettingsTab::General,
         SettingsTab::Theme,
         SettingsTab::Columns,
+        SettingsTab::Graphs,
         SettingsTab::Hidden,
         SettingsTab::Logging,
         SettingsTab::Helper,
@@ -37,6 +40,7 @@ impl SettingsTab {
             SettingsTab::General => "General",
             SettingsTab::Theme => "Theme",
             SettingsTab::Columns => "Columns",
+            SettingsTab::Graphs => "Graphs",
             SettingsTab::Hidden => "Hidden sensors",
             SettingsTab::Logging => "Logging",
             SettingsTab::Helper => "Helper",
@@ -77,6 +81,7 @@ impl KwinfoApp {
                     SettingsTab::General => self.general_tab(ui),
                     SettingsTab::Theme => self.theme_tab(ui),
                     SettingsTab::Columns => self.columns_tab(ui),
+                    SettingsTab::Graphs => self.graphs_tab(ui),
                     SettingsTab::Hidden => self.hidden_tab(ui, snapshot),
                     SettingsTab::Logging => self.later(
                         ui,
@@ -185,6 +190,73 @@ impl KwinfoApp {
             None => "Settings are kept for this session only.".to_string(),
         };
         ui.label(RichText::new(saved_to).small().color(tokens.text_secondary));
+    }
+
+    fn graphs_tab(&mut self, ui: &mut Ui) {
+        let tokens = self.tokens();
+        egui::Grid::new("settings-graphs")
+            .num_columns(2)
+            .striped(false)
+            .spacing([16.0, 8.0])
+            .show(ui, |ui| {
+                ui.label("Show graphs");
+                ui.vertical(|ui| {
+                    for mode in GraphMode::ALL {
+                        if ui
+                            .radio(self.config.graphs.mode == mode, mode.label())
+                            .clicked()
+                        {
+                            self.set_graph_mode(mode);
+                        }
+                    }
+                });
+                ui.end_row();
+
+                let label = ui.label("History");
+                let minutes = self.config.graphs.history_minutes;
+                let mut chosen = None;
+                ComboBox::from_id_salt("settings-history")
+                    .width(84.0)
+                    .selected_text(span_label(minutes * 60))
+                    .show_ui(ui, |ui| {
+                        for choice in HISTORY_MINUTES_CHOICES {
+                            if ui
+                                .selectable_label(minutes == choice, span_label(choice * 60))
+                                .clicked()
+                            {
+                                chosen = Some(choice);
+                            }
+                        }
+                    })
+                    .response
+                    .labelled_by(label.id);
+                if let Some(choice) = chosen {
+                    self.set_history_minutes(choice);
+                }
+                ui.end_row();
+            });
+        ui.add_space(6.0);
+        let points = self.config.graphs.history_points(self.interval_ms);
+        let notes = [
+            format!(
+                "Every sensor keeps up to {points} readings for its graph at the current \
+                 polling period of {} ms. Right-click a graph to choose how much of it to show.",
+                self.interval_ms
+            ),
+            if self.wayland {
+                "This is a Wayland session: the desktop decides where windows open, so \
+                 Automatic shows the graphs inside the main window, and separate graph \
+                 windows can be neither tiled nor reopened where they were."
+                    .to_string()
+            } else {
+                "Automatic opens every graph in its own window, except on Wayland, where the \
+                 desktop decides where windows go and the graphs go inside the main window."
+                    .to_string()
+            },
+        ];
+        for note in notes {
+            ui.label(RichText::new(note).small().color(tokens.text_secondary));
+        }
     }
 
     fn theme_tab(&mut self, ui: &mut Ui) {

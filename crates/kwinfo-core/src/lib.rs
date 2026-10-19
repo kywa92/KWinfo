@@ -20,8 +20,10 @@ pub mod sysroot;
 
 pub use backend::Backend;
 pub use backends::{BackendChoice, BackendSet};
-pub use config::{Config, ConfigFile, Rgb, ThemeMode};
-pub use format::{TemperatureUnit, format_value};
+pub use config::{Config, ConfigFile, GraphEntry, GraphMode, Graphs, Rgb, ThemeMode};
+pub use format::{
+    TemperatureUnit, format_input, format_value, from_display, parse_input, to_display,
+};
 pub use history::History;
 pub use model::{
     Category, Channel, ChannelId, Device, DeviceId, Kind, Limits, Sample, Source, Unit,

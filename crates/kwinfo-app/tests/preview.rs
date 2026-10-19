@@ -17,6 +17,7 @@ use egui_kittest::{Harness, SnapshotOptions};
 use kwinfo_app::app::{KwinfoApp, Startup};
 use kwinfo_app::settings::SettingsTab;
 use kwinfo_app::theme::ThemeMode;
+use kwinfo_core::config::GraphEntry;
 use kwinfo_core::{BackendChoice, ChannelId, Config, DeviceId, Rgb};
 
 fn out_dir() -> PathBuf {
@@ -25,8 +26,25 @@ fn out_dir() -> PathBuf {
 }
 
 fn app(choice: BackendChoice, mode: ThemeMode, config: Config) -> Harness<'static, KwinfoApp> {
+    app_sized(
+        choice,
+        mode,
+        config,
+        egui::vec2(780.0, 720.0),
+        Duration::from_millis(400),
+    )
+}
+
+/// `app`, in a window of `size`, after letting the sampler run for `run`.
+fn app_sized(
+    choice: BackendChoice,
+    mode: ThemeMode,
+    config: Config,
+    size: egui::Vec2,
+    run: Duration,
+) -> Harness<'static, KwinfoApp> {
     let mut harness = Harness::builder()
-        .with_size(egui::vec2(780.0, 720.0))
+        .with_size(size)
         .with_pixels_per_point(1.0)
         .wgpu()
         .build_eframe(move |cc| {
@@ -41,7 +59,7 @@ fn app(choice: BackendChoice, mode: ThemeMode, config: Config) -> Harness<'stati
             )
         });
     // Let the sampler publish a few ticks so the table has values and statistics.
-    std::thread::sleep(Duration::from_millis(400));
+    std::thread::sleep(run);
     harness.run_steps(6);
     harness
 }
@@ -208,5 +226,46 @@ fn app_window_dialogs() {
         harness.get_by_label("Rename…").click();
         harness.run_steps(4);
         write(&mut harness, &format!("app_rename_dialog_{theme}"));
+    }
+}
+
+/// Three graphs in the panel: a temperature on its fixed range, a power reading under
+/// Auto Fit, and the total load; all showing the last minute.
+fn with_graphs() -> Config {
+    let mut config = Config::default();
+    for (raw, autofit) in [
+        ("cpu:mock/temp.package", false),
+        ("cpu:mock/power.package", true),
+        ("cpu:mock/usage.total", false),
+    ] {
+        let mut entry = GraphEntry::new(ChannelId::from_raw(raw));
+        entry.autofit = autofit;
+        entry.span_s = 60;
+        config.graphs.open.push(entry);
+    }
+    config.graphs.panel_width = Some(560.0);
+    config
+}
+
+#[test]
+#[ignore = "renders with wgpu; run with --ignored on a machine with a GPU"]
+fn app_window_graphs() {
+    for (mode, name) in [
+        (ThemeMode::Dark, "app_graphs_dark"),
+        (ThemeMode::Light, "app_graphs_light"),
+    ] {
+        let mut harness = app_sized(
+            BackendChoice::Mock,
+            mode,
+            with_graphs(),
+            egui::vec2(1240.0, 720.0),
+            Duration::from_secs(4),
+        );
+        assert!(
+            harness
+                .query_by_label("Close the graph of CPU Package")
+                .is_some()
+        );
+        write(&mut harness, name);
     }
 }

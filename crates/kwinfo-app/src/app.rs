@@ -16,6 +16,7 @@ use kwinfo_diag::action;
 
 use crate::diagnostics::{self, ReportJob};
 use crate::dialogs::{ColorDialog, Outcome, RenameDialog};
+use crate::graphs::{self, GraphHub};
 use crate::icons::{self, Icon};
 use crate::persist::Persistence;
 use crate::self_usage::SelfUsage;
@@ -70,7 +71,14 @@ impl Startup {
 }
 
 pub struct KwinfoApp {
-    pub(crate) sampler: Sampler,
+    /// Shared with the graph windows, which egui draws in passes of their own.
+    pub(crate) sampler: Arc<Sampler>,
+    /// The open graphs, likewise shared.
+    pub(crate) graphs: GraphHub,
+    /// The panel scrolls to this graph next frame (just opened, or asked for again).
+    pub(crate) graph_scroll_to: Option<ChannelId>,
+    /// The session is Wayland: no window positions (see [`graphs::is_wayland`]).
+    pub(crate) wayland: bool,
     /// Notes from the backends, shown when there is nothing else to show.
     notes: Vec<String>,
     /// Problems the user should know about (settings file); dismissable.
@@ -91,7 +99,7 @@ pub struct KwinfoApp {
     title: String,
     self_usage: SelfUsage,
     pub(crate) flash: Option<(String, Instant)>,
-    snapshot: Arc<Snapshot>,
+    pub(crate) snapshot: Arc<Snapshot>,
     report_out: Option<PathBuf>,
     report_job: Option<ReportJob>,
     /// The last diagnostic report's file, or why it could not be written.
@@ -114,20 +122,26 @@ impl KwinfoApp {
             tracing::info!("{note}");
         }
         let interval_ms = interval_ms.unwrap_or(config.polling.interval_ms);
-        let sampler = Sampler::start(
+        let sampler = Arc::new(Sampler::start(
             set.backends,
             SamplerConfig {
                 interval: Duration::from_millis(interval_ms),
-                ..SamplerConfig::default()
+                history_capacity: config.graphs.history_points(interval_ms),
             },
-        );
+        ));
+        let graphs = GraphHub::new(&config.graphs.open);
         let ctx = cc.egui_ctx.clone();
-        sampler.set_on_tick(move || ctx.request_repaint());
+        let repaint = graphs.clone();
+        // The main window and every graph window show the new readings.
+        sampler.set_on_tick(move || repaint.request_repaints(&ctx));
         theme::install(&cc.egui_ctx);
         let system_theme = SystemTheme::start(cc.egui_ctx.clone());
         let snapshot = sampler.snapshot();
         let mut app = Self {
             sampler,
+            graphs,
+            graph_scroll_to: None,
+            wayland: graphs::is_wayland(),
             notes: set.notes,
             warnings,
             persistence: Persistence::new(config_file, &config),
@@ -289,6 +303,7 @@ impl KwinfoApp {
         self.interval_ms = ms;
         self.config.polling.interval_ms = ms;
         self.sampler.set_interval(Duration::from_millis(ms));
+        self.sync_history_capacity();
     }
 
     /// Shows `text` in the toolbar for a few seconds.
@@ -343,15 +358,12 @@ impl KwinfoApp {
         }
     }
 
-    fn apply(&mut self, action: TableAction, snapshot: &Snapshot) {
+    fn apply(&mut self, ctx: &egui::Context, action: TableAction, snapshot: &Snapshot) {
         match action {
             TableAction::ShowGraph(id) => {
-                let label = snapshot
-                    .find(&id)
-                    .map_or(id.as_str(), |c| self.config.label_of(&c.channel))
-                    .to_string();
-                action!("sensor.show_graph", channel = %id, note = "graph windows arrive in M3");
-                self.flash(format!("Graph of {label}: arrives in M3"));
+                action!("sensor.show_graph", channel = %id);
+                self.open_graph(ctx, &id);
+                ctx.request_repaint();
             }
             TableAction::Rename(id) => {
                 if let Some(entry) = snapshot.find(&id) {
@@ -529,6 +541,10 @@ impl eframe::App for KwinfoApp {
                 )
                 .show(ui, |ui| self.filter_bar(ui, &snapshot));
         }
+        // The graph panel (when graphs are inside the main window) takes its room before
+        // the table does; graph windows are shown from here too.
+        self.graphs_frame(ui, &snapshot);
+        let graphed = self.graphed();
         let mut actions = Vec::new();
         egui::CentralPanel::default()
             .frame(Frame::new().fill(tokens.table_bg))
@@ -540,6 +556,7 @@ impl eframe::App for KwinfoApp {
                         snapshot: &snapshot,
                         config: &mut self.config,
                         tokens,
+                        graphed: &graphed,
                     };
                     actions = table::show(ui, view, &mut self.table);
                 }
@@ -547,7 +564,7 @@ impl eframe::App for KwinfoApp {
         self.settings_window(&ctx, &snapshot);
         self.dialogs(&ctx);
         for action in actions {
-            self.apply(action, &snapshot);
+            self.apply(&ctx, action, &snapshot);
         }
         self.sync_disabled();
 

@@ -55,6 +55,8 @@ pub enum Icon {
     Power,
     Close,
     Shield,
+    /// A line chart: graphs.
+    Graph,
 }
 
 impl Icon {
@@ -448,6 +450,10 @@ fn draw(pen: &mut Pen, icon: Icon) {
             pen.line(1.7, &[(4.0, 4.0), (12.0, 12.0)]);
             pen.line(1.7, &[(12.0, 4.0), (4.0, 12.0)]);
         }
+        Icon::Graph => {
+            pen.line(1.4, &[(2.0, 1.8), (2.0, 14.2), (14.4, 14.2)]);
+            pen.line(1.7, &[(4.4, 11.2), (7.0, 6.8), (9.6, 9.4), (13.4, 3.6)]);
+        }
     }
 }
 
@@ -549,7 +555,7 @@ mod tests {
         }
     }
 
-    const ALL: [Icon; 34] = [
+    const ALL: [Icon; 35] = [
         Icon::Thermometer,
         Icon::Bolt,
         Icon::Wave,
@@ -584,5 +590,6 @@ mod tests {
         Icon::Power,
         Icon::Close,
         Icon::Shield,
+        Icon::Graph,
     ];
 }

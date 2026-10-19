@@ -1,12 +1,13 @@
 //! The bottom toolbar: expand/collapse, reset, logging, elapsed time, polling period,
-//! helper status, filter, settings and quit.
+//! graphs, helper status, filter, settings and quit.
 
-use egui::{Align, ComboBox, Layout, RichText, Role, Ui, WidgetInfo, pos2};
-use kwinfo_core::Snapshot;
+use egui::{Align, Button, ComboBox, Layout, Popup, RichText, Role, Ui, WidgetInfo, pos2};
+use kwinfo_core::{GraphMode, Snapshot};
 
 use kwinfo_diag::action;
 
 use crate::app::{KwinfoApp, POLLING_CHOICES_MS, format_elapsed};
+use crate::graphs::Placement;
 use crate::icons::{self, Icon};
 use crate::settings::SettingsTab;
 use crate::table::TableState;
@@ -46,6 +47,8 @@ impl KwinfoApp {
             ui.separator();
             icons::icon(ui, Icon::Gauge, tokens.text_secondary);
             self.polling_combo(ui, "toolbar-polling", None);
+            ui.separator();
+            self.graphs_button(ui);
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if icons::button(ui, Icon::Power, None, "Quit")
@@ -79,6 +82,58 @@ impl KwinfoApp {
                     .on_hover_text("Sensors listed, and how long the last poll took");
             });
         });
+    }
+
+    /// The Graphs menu: tile, close all, and where graphs are shown. Shows how many
+    /// graphs are open.
+    fn graphs_button(&mut self, ui: &mut Ui) {
+        let count = self.graphs.len();
+        let text = (count > 0).then(|| count.to_string());
+        let response = icons::button(ui, Icon::Graph, text.as_deref(), "Graphs").on_hover_text(
+            "Graphs: tile or close them, and choose whether they open in their own windows. \
+             Open one by double-clicking a sensor.",
+        );
+        let _ = Popup::menu(&response).show(|ui| self.graphs_menu(ui));
+    }
+
+    fn graphs_menu(&mut self, ui: &mut Ui) {
+        let tokens = self.tokens();
+        let ctx = ui.ctx().clone();
+        ui.set_min_width(230.0);
+        let count = self.graphs.len();
+        let windows = self.graph_placement(&ctx) == Placement::Windows;
+        let why_not = if count == 0 {
+            "No graph is open. Double-click a sensor to open one."
+        } else {
+            "The graphs are inside the main window, where they are always tiled."
+        };
+        if ui
+            .add_enabled(count > 0 && windows, Button::new("Tile graph windows"))
+            .on_disabled_hover_text(why_not)
+            .clicked()
+        {
+            self.tile_graphs(&ctx);
+        }
+        if ui
+            .add_enabled(count > 0, Button::new("Close all graphs"))
+            .clicked()
+        {
+            self.close_all_graphs();
+        }
+        ui.separator();
+        ui.label(
+            RichText::new("Show graphs")
+                .small()
+                .color(tokens.text_secondary),
+        );
+        for mode in GraphMode::ALL {
+            if ui
+                .radio(self.config.graphs.mode == mode, mode.label())
+                .clicked()
+            {
+                self.set_graph_mode(mode);
+            }
+        }
     }
 
     /// The polling-period selector. Named by `label` (a visible label's id) or, without
