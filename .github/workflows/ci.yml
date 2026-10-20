@@ -78,3 +78,33 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+
+  # The files the packages install, checked without building them; release.yml builds,
+  # lints and smoke-tests the packages themselves.
+  packaging:
+    name: packaging files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            desktop-file-utils appstream shellcheck libxml2-utils
+      - name: Desktop entry
+        run: desktop-file-validate packaging/desktop/io.github.kywa92.KWinfo.desktop
+      - name: AppStream metadata
+        run: appstreamcli validate --no-net --explain packaging/desktop/io.github.kywa92.KWinfo.metainfo.xml
+      - name: D-Bus policy and polkit action
+        run: xmllint --noout packaging/dbus/*.conf packaging/polkit/*.policy
+      - name: Shell scripts
+        run: |
+          shellcheck packaging/*.sh packaging/deb/build.sh packaging/deb/postinst \
+            packaging/deb/prerm packaging/deb/postrm packaging/appimage/build.sh \
+            packaging/appimage/AppRun packaging/desktop/render-icons.sh
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - uses: Swatinem/rust-cache@v2
+      - name: Man pages match the command lines
+        run: cargo xtask man --check

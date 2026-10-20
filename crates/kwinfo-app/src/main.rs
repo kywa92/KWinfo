@@ -1,45 +1,11 @@
 //! Entry point of the `kwinfo` binary.
 
-use std::path::PathBuf;
+mod args;
 
-use clap::{Parser, ValueEnum};
+use args::{Args, ThemeArg};
+use clap::Parser as _;
 use kwinfo_app::app::{self, KwinfoApp, Startup};
 use kwinfo_core::{BackendChoice, ConfigFile, ThemeMode};
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "kwinfo",
-    version,
-    about = "Hardware monitor in the spirit of HWiNFO64"
-)]
-struct Args {
-    /// Use the synthetic mock backend instead of real hardware
-    #[arg(long, conflicts_with = "replay")]
-    mock: bool,
-    /// Run the real backends against a captured tree instead of / (the output of
-    /// `kwinfo-cli snapshot`, or a test fixture)
-    #[arg(long, value_name = "DIR")]
-    replay: Option<PathBuf>,
-    /// Backend selection through the environment (`KWINFO_BACKEND=mock`)
-    #[arg(long, env = "KWINFO_BACKEND", hide = true)]
-    backend: Option<String>,
-    /// Polling interval in milliseconds for this run (default: the saved setting)
-    #[arg(long, value_name = "MS")]
-    interval: Option<u64>,
-    /// Theme for this run (default: the saved setting)
-    #[arg(long, value_enum)]
-    theme: Option<ThemeArg>,
-    /// Settings file to use instead of ~/.config/kwinfo/config.toml
-    #[arg(long, value_name = "FILE", env = "KWINFO_CONFIG")]
-    config: Option<PathBuf>,
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum ThemeArg {
-    Auto,
-    Dark,
-    Light,
-}
 
 impl From<ThemeArg> for ThemeMode {
     fn from(arg: ThemeArg) -> Self {

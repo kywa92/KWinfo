@@ -503,6 +503,31 @@ Build all crates first (`cargo build --release --workspace`), then
 (`libxkbcommon0`, `libgl1`, …). Run `lintian` in CI. Build on Ubuntu 22.04 so the package
 installs on 22.04+ and Debian 12+.
 
+*As built (M6):* `packaging/deb/build.sh` runs the steps. Differences from the sketch above:
+
+- *Depends.* eframe 0.37 renders with wgpu and loads X11, Wayland, xkbcommon, EGL and
+  Vulkan with `dlopen`, so `$auto` finds only glibc and `libsensors5`. The rest is listed
+  by hand: `libegl1, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0,
+  libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6`, plus
+  `polkitd | policykit-1, dbus`; `libvulkan1` is recommended (wgpu falls back to OpenGL).
+  The smoke test installs the package on bare Ubuntu 22.04/24.04 and Debian 12 images and
+  starts the window under Xvfb, which proves the list complete for X11.
+- *Helper files.* No `systemd-units` (the unit is D-Bus activated and never enabled):
+  `kwinfo-helper install --root target/release/kwinfo-deb/root --helper-path
+  /usr/libexec/kwinfo/kwinfo-helper --no-copy` renders them, and the assets put the unit in
+  `/usr/lib/systemd/system`, the D-Bus policy in `/usr/share/dbus-1/system.d`, the
+  activation file in `/usr/share/dbus-1/system-services`, the polkit action in
+  `/usr/share/polkit-1/actions` and the module list in `/usr/lib/modules-load.d`. Hand-written
+  maintainer scripts reload systemd and D-Bus, restart a running helper on upgrade, load
+  `msr`, and point out a local install that would shadow the package.
+- *Paths.* cargo-deb resolves asset paths from `crates/kwinfo-app`, hence `../../`. The
+  copyright file is a hand-written DEP-5 file (`license-file`); the Debian changelog is
+  generated; man pages come from `docs/man/`. lintian passes with `--fail-on
+  error,warning`; three overrides are explained in `packaging/deb/lintian-overrides`.
+- *Man pages.* `cargo xtask man` (crate `xtask`, clap_mangen) renders kwinfo(1),
+  kwinfo-cli(1) and kwinfo-helper(8) from each binary's `args.rs` plus prose; CI checks that
+  the committed pages are current.
+
 ### 7.2 AppImage
 
 `packaging/appimage/build.sh`: release build → assemble `AppDir` (`usr/bin/kwinfo`,
@@ -513,6 +538,18 @@ Output `KWinfo-x86_64.AppImage` with zsync update information pointing at GitHub
 Built on Ubuntu 22.04 (glibc 2.35 floor). `cargo-appimage` 2.4 stays as a one-command local
 alternative. The app detects `$APPIMAGE` to enable the helper install flow from section 3.5.
 
+*As built (M6):* linuxdeploy `1-alpha-20251107-1`, its AppImage plugin `1-alpha-20250213-1`
+and the type2 runtime `20251108` are pinned and checked by SHA-256 (appimagetool would
+otherwise fetch the runtime's moving `continuous` build). A custom `AppRun` runs `kwinfo`,
+or `kwinfo-cli`/`kwinfo-helper` when named as the first argument or through a link, so
+the programs start from `usr/bin` and find the helper beside them. The helper must link
+nothing but glibc, since KWinfo copies it out of the image to run it as root; the build
+checks that. The AppStream file goes in as `<id>.appdata.xml`, the only name this
+appimagetool recognises, and is validated offline (its URLs exist only once pushed). The
+root icon and `.DirIcon` are the 256 px PNG. Update information:
+`gh-releases-zsync|kywa92|KWinfo|latest|KWinfo-x86_64.AppImage.zsync`. `cargo-appimage` was
+not needed.
+
 ### 7.3 CI/CD (GitHub Actions)
 
 - `ci.yml` on push and PR: `cargo fmt --check`, `cargo clippy --workspace -D warnings`,
@@ -521,6 +558,14 @@ alternative. The app detects `$APPIMAGE` to enable the helper install flow from 
   for licences and advisories.
 - `release.yml` on tags `v*`: `.deb`, AppImage, a `kwinfo-cli` tarball, `SHA256SUMS`, GitHub
   release with notes from `CHANGELOG.md`.
+
+*As built (M6):* `release.yml` also runs by hand and on pushes to `main` that change the
+packaging; then it builds and tests without releasing. It lints the `.deb`, smoke-tests both
+packages in Ubuntu 22.04/24.04, Debian 12 and Fedora containers (`packaging/smoke-test.sh`:
+install, run, start the window under Xvfb, keep a screenshot), and on a tag first checks
+that the tag, `Cargo.toml`, the dated `CHANGELOG.md` section and the AppStream release
+entry agree, then creates a draft release. `ci.yml` gained a `packaging` job:
+desktop-file-validate, appstreamcli, xmllint, shellcheck and `cargo xtask man --check`.
 
 ## 8. Development and testing strategy
 

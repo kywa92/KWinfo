@@ -1,0 +1,149 @@
+# KWinfo's packages: the .deb, the AppImage (with its .zsync), the kwinfo-cli tarball and
+# SHA256SUMS, built on Ubuntu 22.04, linted, and installed and started on fresh Ubuntu,
+# Debian and Fedora systems.
+#
+# - A tag vX.Y.Z also attaches them to a draft GitHub release with the notes from
+#   CHANGELOG.md, to be checked and published by hand.
+# - Run by hand (Actions -> Release -> Run workflow), or on pushes to main that change the
+#   packaging, it only builds and tests them: the run's "packages" artifact holds them,
+#   and the "screenshot-*" artifacts show the window on each system.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - "docs/man/**"
+      - "crates/kwinfo-app/Cargo.toml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.99.1"
+  CARGO_DEB_VERSION: "3.8.0"
+
+jobs:
+  build:
+    name: Build the packages
+    # The oldest supported system: the packages need its glibc, 2.35, or later.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the tag, Cargo.toml, CHANGELOG.md and the AppStream metadata agree
+        if: startsWith(github.ref, 'refs/tags/')
+        run: packaging/check-release.sh "$GITHUB_REF_NAME"
+      - name: Install the build and packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libsensors-dev clang pkg-config libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
+            lintian appstream zsync
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+      - name: Install cargo-deb
+        # static-lzma: its own liblzma, whatever the runner image has installed.
+        run: cargo install cargo-deb --version "$CARGO_DEB_VERSION" --locked --features static-lzma
+      - name: Release build
+        run: packaging/build-release.sh
+      - name: Debian package
+        run: packaging/deb/build.sh --no-build
+      - name: Lintian
+        run: lintian --info --display-info --fail-on error,warning dist/kwinfo_*.deb
+      - name: AppImage
+        run: packaging/appimage/build.sh --no-build
+      - name: kwinfo-cli tarball
+        run: packaging/cli-tarball.sh --no-build
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum kwinfo_*.deb KWinfo-*.AppImage KWinfo-*.AppImage.zsync \
+            kwinfo-cli-*.tar.gz >SHA256SUMS
+          cat SHA256SUMS
+      - name: Release notes (shown on the run's summary page)
+        run: |
+          version=$(cargo pkgid --package kwinfo-app | sed 's/.*[#@]//')
+          packaging/release-notes.sh "$version" >>"$GITHUB_STEP_SUMMARY" ||
+            echo "CHANGELOG.md has no section for $version yet." >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/
+          if-no-files-found: error
+
+  smoke:
+    name: Smoke test (${{ matrix.name }})
+    needs: build
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: deb on Ubuntu 22.04, image: "ubuntu:22.04", kind: deb, slug: ubuntu-22.04-deb }
+          - { name: deb on Ubuntu 24.04, image: "ubuntu:24.04", kind: deb, slug: ubuntu-24.04-deb }
+          - { name: deb on Debian 12, image: "debian:12", kind: deb, slug: debian-12-deb }
+          - { name: AppImage on Ubuntu 22.04, image: "ubuntu:22.04", kind: appimage, slug: ubuntu-22.04-appimage }
+          - { name: AppImage on Fedora, image: "fedora:latest", kind: appimage, slug: fedora-appimage }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Install, run and start the window
+        env:
+          KIND: ${{ matrix.kind }}
+        run: |
+          case "$KIND" in
+            deb) file=$(ls dist/kwinfo_*_amd64.deb) ;;
+            appimage) file=dist/KWinfo-x86_64.AppImage ;;
+          esac
+          SCREENSHOT="$PWD/screenshot.png" sh packaging/smoke-test.sh "$KIND" "$file"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshot-${{ matrix.slug }}
+          path: screenshot.png
+          if-no-files-found: ignore
+
+  release:
+    name: Draft the GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Create the draft release, or update it when the run is repeated
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#v}
+          packaging/release-notes.sh "$version" >"$RUNNER_TEMP/notes.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$TAG" dist/* --draft --verify-tag \
+              --title "KWinfo $version" --notes-file "$RUNNER_TEMP/notes.md"
+          fi

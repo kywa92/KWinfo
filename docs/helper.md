@@ -55,6 +55,13 @@ The list goes to `/usr/local/libexec/kwinfo/installed-files`;
 removes exactly those files. An install refuses to shadow a packaged helper
 (`/usr/libexec/kwinfo/kwinfo-helper`).
 
+The Debian package installs the same files, rendered for
+`/usr/libexec/kwinfo/kwinfo-helper`, in the places meant for packages: the unit in
+`/usr/lib/systemd/system`, the D-Bus policy in `/usr/share/dbus-1/system.d` and the module
+list in `/usr/lib/modules-load.d`. Installed over a local install, the package takes over
+the two files at the same paths (the D-Bus activation file and the polkit action), and
+`uninstall` then leaves them to it.
+
 ## Testing it on a machine
 
 From a release build on the machine (`cargo build --release`):

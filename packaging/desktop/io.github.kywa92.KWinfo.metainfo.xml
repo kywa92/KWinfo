@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Kylan Walters -->
+<component type="desktop-application">
+  <id>io.github.kywa92.KWinfo</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+
+  <name>KWinfo</name>
+  <summary>Hardware sensors and live graphs</summary>
+  <!-- `developer` for AppStream 1.0, `developer_name` for older readers (Ubuntu 22.04). -->
+  <developer id="io.github.kywa92">
+    <name>Kylan Walters</name>
+  </developer>
+  <developer_name>Kylan Walters</developer_name>
+
+  <description>
+    <p>
+      KWinfo shows the hardware sensors of a Linux computer in one window modelled on the
+      Sensor Status window of HWiNFO64: temperatures, voltages, currents, fan speeds, clocks,
+      power, usage, drive and network rates and S.M.A.R.T. data, grouped by device, with the
+      minimum, maximum and average of each since the last reset.
+    </p>
+    <ul>
+      <li>A live graph for any sensor, in its own window or in a panel beside the list</li>
+      <li>Rename, hide, recolour or stop monitoring any sensor; every choice is remembered</li>
+      <li>Alerts with desktop notifications, CSV logging, and sensor values in the system tray</li>
+      <li>CPU power, core voltages, S.M.A.R.T. data and GPU load through a small privileged
+        helper that only reads and never writes to the hardware</li>
+      <li>Labels and compute rules from your lm-sensors configuration</li>
+      <li>Dark and light themes that follow the desktop</li>
+    </ul>
+    <p>
+      Motherboard sensors depend on the kernel driver for the board's monitoring chip; the
+      installation guide explains how to find and load it.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.kywa92.KWinfo.desktop</launchable>
+  <provides>
+    <binary>kwinfo</binary>
+    <binary>kwinfo-cli</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/kywa92/KWinfo</url>
+  <url type="bugtracker">https://github.com/kywa92/KWinfo/issues</url>
+  <url type="help">https://github.com/kywa92/KWinfo/blob/main/docs/install.md</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Sensors and three live graphs in the dark theme</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/kywa92/KWinfo/main/docs/screenshots/sensor-status-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The same window in the light theme</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/kywa92/KWinfo/main/docs/screenshots/sensor-status-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>What a sensor's menu offers</caption>
+      <image type="source" width="820" height="720">https://raw.githubusercontent.com/kywa92/KWinfo/main/docs/screenshots/context-menu-dark.png</image>
+    </screenshot>
+  </screenshots>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <!-- At release: drop type="development" and set the date to the one in CHANGELOG.md;
+         the release workflow checks both. -->
+    <release version="0.1.0" type="development" date="2026-10-20">
+      <description>
+        <p>
+          The first release: the Sensor Status window, live graphs, the privileged helper for
+          root-only sensors, CSV logging, alerts and tray values, as a Debian package and an
+          AppImage.
+        </p>
+      </description>
+      <url type="details">https://github.com/kywa92/KWinfo/releases/tag/v0.1.0</url>
+    </release>
+  </releases>
+</component>

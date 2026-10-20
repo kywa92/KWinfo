@@ -1,0 +1,96 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH KWINFO 1 "" "KWinfo 0.1.0"
+.SH NAME
+kwinfo \- Hardware monitor in the spirit of HWiNFO64
+.SH SYNOPSIS
+\fBkwinfo\fR [\fB\-\-mock\fR] [\fB\-\-replay\fR] [\fB\-\-interval\fR] [\fB\-\-theme\fR] [\fB\-\-config\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
+.SH DESCRIPTION
+\fBkwinfo\fR shows the hardware sensors of a Linux machine in one window modelled on the Sensor Status window of HWiNFO64: temperatures, voltages, currents, fan speeds, clocks, power, usage, drive and network rates and S.M.A.R.T. data, grouped by device, each with its current value and the minimum, maximum and average since the last reset.
+.PP
+Double\-click a sensor for a live graph. Right\-click it to rename, hide, recolour or stop monitoring it, to set an alert, or to show its value in the system tray. The toolbar logs sensors to CSV files. Every setting is kept between runs.
+.PP
+Most sensors come from the kernel\*(Aqs hwmon drivers through \fI/sys\fR, with the labels and compute rules of the lm\-sensors configuration. Motherboard sensors need the kernel module for the board\*(Aqs Super I/O chip; \fBsensors\-detect\fR(8) finds it, and the installation guide lists the usual ones. Sensors that only root may read (CPU power from RAPL, core voltages, package C\-states, S.M.A.R.T. data, GPU engine load) come from \fBkwinfo\-helper\fR(8), a small system service that KWinfo starts through D\-Bus.
+.SH OPTIONS
+.TP
+\fB\-\-mock\fR
+Use the synthetic mock backend instead of real hardware
+.TP
+\fB\-\-replay\fR \fI<DIR>\fR
+Run the real backends against a captured tree instead of / (the output of \fBkwinfo\-cli snapshot\fR, or a test fixture)
+.TP
+\fB\-\-interval\fR \fI<MS>\fR
+Polling interval in milliseconds for this run (default: the saved setting)
+.TP
+\fB\-\-theme\fR \fI<THEME>\fR
+Theme for this run (default: the saved setting)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+auto
+.IP \(bu 2
+dark
+.IP \(bu 2
+light
+.RE
+.TP
+\fB\-\-config\fR \fI<FILE>\fR
+Settings file to use instead of ~/.config/kwinfo/config.toml
+.RS
+May also be specified with the \fBKWINFO_CONFIG\fR environment variable.
+.RE
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH ENVIRONMENT
+.TP
+\fBKWINFO_CONFIG\fR
+The settings file, as with \fB\-\-config\fR.
+.TP
+\fBKWINFO_BACKEND\fR
+\fImock\fR selects the synthetic sensors, as \fB\-\-mock\fR does.
+.TP
+\fBKWINFO_LOG\fR
+What goes to standard error, in the filter syntax of the Rust tracing library (default: info).
+.TP
+\fBKWINFO_FILE_LOG\fR
+What goes to the log file (default: debug for KWinfo, info for the libraries).
+.TP
+\fBKWINFO_LOG_DIR\fR
+Directory for the log files.
+.TP
+\fBKWINFO_NO_FILE_LOG\fR
+Anything but 0 turns the log file off.
+.SH FILES
+.TP
+\fI~/.config/kwinfo/config.toml\fR
+The settings: theme, columns, polling period, graphs, and per\-sensor names, colours, hidden and disabled state, alerts and tray icons. \fI$XDG_CONFIG_HOME\fR replaces \fI~/.config\fR when set.
+.TP
+\fI~/.local/share/kwinfo/logs/\fR
+The default folder for CSV logs.
+.TP
+\fI~/.local/state/kwinfo/logs/\fR
+A diagnostic log per run; \fBkwinfo\-cli report\fR bundles the newest ones for a bug report.
+.TP
+\fI/usr/share/doc/kwinfo/\fR
+The installation guide (kernel modules, sensors\-detect), the helper and the diagnostics guides, when installed from the Debian package.
+.SH EXAMPLES
+.TP
+\fBkwinfo \-\-mock\fR
+Synthetic sensors, for a look at KWinfo without reading any hardware.
+.TP
+\fBkwinfo \-\-replay\fR \fImy\-machine\fR
+Shows what \fBkwinfo\-cli snapshot\fR or \fBkwinfo\-cli record\fR captured into \fImy\-machine\fR, on any computer.
+.TP
+\fBkwinfo \-\-theme light \-\-interval 2000\fR
+The light theme and a reading every two seconds, for this run only.
+.SH BUGS
+Report problems at \fIhttps://github.com/kywa92/KWinfo/issues\fR and attach the file that \fBkwinfo\-cli report\fR writes.
+.SH "SEE ALSO"
+\fBkwinfo\-cli\fR(1), \fBkwinfo\-helper\fR(8), \fBsensors\fR(1), \fBsensors\-detect\fR(8), \fBsmartctl\fR(8)

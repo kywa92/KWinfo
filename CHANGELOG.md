@@ -4,15 +4,36 @@ All notable changes to KWinfo are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0] - Unreleased
 
-### Fixed
-
-- An app-level test flaked on slow CI runners (`Harness::run exceeded max_steps`); the
-  interaction tests now allow more frames to settle and step while background work runs.
+The first release. The Sensor Status window shows every sensor the kernel exposes, with
+minimum, maximum and average, sub-groups, renaming, hiding, colours and per-sensor
+monitoring switches; any sensor opens a live graph; a privileged helper adds CPU power,
+core voltages, package C-states, S.M.A.R.T. data and GPU load; sensors can be logged to
+CSV, watched with alerts and shown in the system tray. The first target is an Intel Core
+i7-8700K with UHD 630 graphics; other hardware works as far as the kernel's drivers reach.
 
 ### Added
 
+- Packages (milestone M6). A Debian package for Ubuntu 22.04+ and Debian 12+ with
+  `kwinfo`, `kwinfo-cli` and the helper as a D-Bus-activated system service
+  (`/usr/libexec/kwinfo/kwinfo-helper`, its systemd unit, D-Bus policy, polkit action and
+  `msr` module list), whose maintainer scripts reload systemd and D-Bus and load `msr`.
+  An AppImage for distributions with glibc 2.35 or later, with libsensors bundled, the
+  command line tool and the helper inside (`KWinfo-x86_64.AppImage kwinfo-cli list`), and
+  zsync update information for GitHub releases. A `kwinfo-cli` tarball with the helper.
+  Scripts for each in `packaging/`, which also build on aarch64.
+- Desktop integration: a desktop entry, an icon (SVG and 16 to 512 px PNGs), AppStream
+  metadata with screenshots, and the man pages kwinfo(1), kwinfo-cli(1) and
+  kwinfo-helper(8), generated from the command lines by `cargo xtask man`.
+- Release workflow: a tag `v*` builds the packages on Ubuntu 22.04, runs lintian, installs
+  and starts them on Ubuntu 22.04 and 24.04, Debian 12 and Fedora, and drafts a GitHub
+  release with the packages, `SHA256SUMS` and notes from this file; run by hand, it builds
+  and tests without releasing. CI also validates the desktop entry, the AppStream
+  metadata, the shell scripts and the man pages.
+- `docs/install.md`: installing each package, the helper, `sensors-detect`, and the kernel
+  modules for Nuvoton (`nct6775`, `nct6683 force=1` on MSI boards), ITE (`it87` through
+  DKMS, Secure Boot), ASUS, DIMM (`jc42`, `spd5118`) and SATA drive (`drivetemp`) sensors.
 - CSV logging (milestone M5) on the sampler thread: a UTC ISO 8601 time and elapsed
   seconds, then one column per sensor in its base unit; a new file when the logged sensors
   change and, optionally, every day; every reading or a chosen interval; every listed
@@ -131,6 +152,10 @@ All notable changes to KWinfo are documented here. The format follows
 
 ### Changed
 
+- `kwinfo-helper uninstall` leaves the D-Bus activation file and the polkit action in
+  place when the Debian package has been installed over a local install and owns them.
+- The command lines of `kwinfo`, `kwinfo-cli` and `kwinfo-helper` live in each binary's
+  `args.rs`, which `cargo xtask man` compiles too.
 - The application id, D-Bus names, polkit action and platform directory qualifier are now
   `io.github.kywa92.KWinfo`, matching the GitHub repository.
 
@@ -148,3 +173,10 @@ All notable changes to KWinfo are documented here. The format follows
   instead of always applying their defaults. `ThemeMode` moved to `kwinfo_core::config`.
 - Labels no longer take clicks for text selection, so a click anywhere on a row reaches
   the row.
+
+### Fixed
+
+- An app-level test flaked on slow CI runners (`Harness::run exceeded max_steps`); the
+  interaction tests now allow more frames to settle and step while background work runs.
+
+[0.1.0]: https://github.com/kywa92/KWinfo/releases/tag/v0.1.0

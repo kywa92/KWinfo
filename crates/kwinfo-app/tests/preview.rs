@@ -291,6 +291,67 @@ fn app_window_graphs() {
     }
 }
 
+/// The pictures in `docs/screenshots/` that the README and the AppStream metadata show:
+/// the window with a minute of readings in three graphs, in both themes, and a sensor's
+/// context menu. Writes there directly and takes a little over a minute:
+///
+/// ```bash
+/// cargo test -p kwinfo-app --test preview -- --ignored screenshots
+/// ```
+#[test]
+#[ignore = "renders with wgpu and waits a minute; run with --ignored on a machine with a GPU"]
+fn screenshots() {
+    let docs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/screenshots");
+    std::fs::create_dir_all(&docs).unwrap();
+    let size = egui::vec2(1280.0, 720.0);
+    let publish = |harness: &mut Harness<'_, KwinfoApp>, name: &str| {
+        write(harness, name);
+        let written = ["png", "new.png"]
+            .iter()
+            .map(|suffix| out_dir().join(format!("{name}.{suffix}")))
+            .find(|path| path.exists())
+            .unwrap();
+        std::fs::copy(written, docs.join(format!("{name}.png"))).unwrap();
+    };
+
+    let mut config = with_graphs();
+    config.graphs.panel_width = Some(520.0);
+    // Both windows sample at the same time, so the minute is spent once.
+    let mut windows: Vec<_> = [
+        (ThemeMode::Dark, "sensor-status-dark"),
+        (ThemeMode::Light, "sensor-status-light"),
+    ]
+    .into_iter()
+    .map(|(mode, name)| {
+        let harness = app_sized(
+            BackendChoice::Mock,
+            mode,
+            config.clone(),
+            size,
+            Duration::ZERO,
+        );
+        (name, harness)
+    })
+    .collect();
+    std::thread::sleep(Duration::from_secs(62));
+    for (name, harness) in &mut windows {
+        harness.run_steps(6);
+        publish(harness, name);
+    }
+
+    // Narrower, so that the Average column does not stretch across the empty space.
+    let mut harness = app_sized(
+        BackendChoice::Mock,
+        ThemeMode::Dark,
+        Config::default(),
+        egui::vec2(820.0, 720.0),
+        Duration::from_secs(3),
+    );
+    harness.get_by_label("Core #2").click_secondary();
+    harness.run_steps(4);
+    publish(&mut harness, "context-menu-dark");
+}
+
 /// The Helper tab: not installed (with Install and Run offered), and running with a note
 /// on a source it could not open.
 #[test]

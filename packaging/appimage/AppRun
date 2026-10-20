@@ -1,0 +1,27 @@
+#!/bin/sh
+# Entry point of KWinfo's AppImage. Runs kwinfo; with kwinfo-cli or kwinfo-helper as the
+# first argument, or when the AppImage is started through a link with one of those
+# names, runs that program instead:
+#
+#   ./KWinfo-x86_64.AppImage kwinfo-cli list --ids
+#   ln -s KWinfo-x86_64.AppImage kwinfo-cli && ./kwinfo-cli list --ids
+#
+# The programs are started from usr/bin, so each finds kwinfo-helper beside it.
+set -eu
+
+appdir=${APPDIR:-$(dirname "$(readlink -f "$0")")}
+called=${ARGV0:-$0}
+
+case "${called##*/}" in
+    kwinfo-cli | kwinfo-helper) exec "$appdir/usr/bin/${called##*/}" "$@" ;;
+esac
+
+case "${1-}" in
+    kwinfo | kwinfo-cli | kwinfo-helper)
+        program=$1
+        shift
+        exec "$appdir/usr/bin/$program" "$@"
+        ;;
+esac
+
+exec "$appdir/usr/bin/kwinfo" "$@"

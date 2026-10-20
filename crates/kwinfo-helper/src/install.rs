@@ -154,8 +154,16 @@ pub fn install(layout: &Layout, binary: Option<&Path>) -> anyhow::Result<Vec<Str
     Ok(written)
 }
 
+/// The files a package installs at the same paths as a local install. When a package was
+/// installed over a local install, dpkg took them over, and they now belong to it.
+const SHARED_WITH_PACKAGE: [&str; 2] = [
+    "/usr/share/dbus-1/system-services/io.github.kywa92.KWinfo.Helper.service",
+    "/usr/share/polkit-1/actions/io.github.kywa92.KWinfo.policy",
+];
+
 /// Removes what a local install wrote (as its manifest lists it, limited to the files an
-/// install writes). Returns the absolute paths removed.
+/// install writes, and leaving the files a package now owns). Returns the absolute paths
+/// removed.
 pub fn uninstall(layout: &Layout) -> anyhow::Result<Vec<String>> {
     let manifest = layout.target(LOCAL_MANIFEST_PATH);
     let list = match fs::read_to_string(&manifest) {
@@ -172,10 +180,15 @@ pub fn uninstall(layout: &Layout) -> anyhow::Result<Vec<String>> {
         .map(|f| f.path.to_string())
         .collect();
     allowed.insert(layout.helper_path.clone());
+    let packaged = layout.packaged();
     let mut removed = Vec::new();
     for path in list.lines().map(str::trim).filter(|p| !p.is_empty()) {
         if !allowed.contains(path) {
             tracing::warn!("the manifest lists {path}, which an install never writes; left alone");
+            continue;
+        }
+        if packaged && SHARED_WITH_PACKAGE.contains(&path) {
+            tracing::info!("{path} is left in place: the installed package owns it now");
             continue;
         }
         match fs::remove_file(layout.target(path)) {
@@ -362,5 +375,31 @@ mod tests {
         let staging = Layout::new(root.path()).with_helper_path(PACKAGED_HELPER_PATH);
         assert_eq!(install(&staging, None).unwrap().len(), 5);
         assert!(!staging.installed_locally(), "packages need no manifest");
+    }
+
+    #[test]
+    fn uninstalling_under_a_package_leaves_the_files_it_owns() {
+        let root = tempfile::tempdir().unwrap();
+        let layout = Layout::new(root.path());
+        let binary = root.path().join("kwinfo-helper");
+        fs::write(&binary, b"").unwrap();
+        install(&layout, Some(&binary)).unwrap();
+        // The package goes in on top and takes over the files at the same paths.
+        let packaged = layout.target(PACKAGED_HELPER_PATH);
+        fs::create_dir_all(packaged.parent().unwrap()).unwrap();
+        fs::write(&packaged, b"").unwrap();
+
+        let removed = uninstall(&layout).unwrap();
+        assert_eq!(removed.len(), 4, "{removed:?}");
+        for path in SHARED_WITH_PACKAGE {
+            assert!(layout.target(path).exists(), "{path} was removed");
+        }
+        assert!(
+            !layout
+                .target("/etc/systemd/system/kwinfo-helper.service")
+                .exists()
+        );
+        assert!(!layout.target(LOCAL_HELPER_PATH).exists());
+        assert!(!layout.installed_locally());
     }
 }

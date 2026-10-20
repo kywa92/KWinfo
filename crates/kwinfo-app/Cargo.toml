@@ -1,6 +1,7 @@
 [package]
 name = "kwinfo-app"
-description = "KWinfo desktop application: the Sensor Status window and sensor graphs"
+# Also the Debian package's synopsis, which must not start with the package's name.
+description = "Hardware monitor with live sensor graphs, in the spirit of HWiNFO64"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -47,3 +48,51 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
+
+# The Debian package (PLAN.md 7.1), built by packaging/deb/build.sh, which renders the
+# helper's files into target/release/kwinfo-deb/ first. Paths are relative to this crate;
+# `target/release/` is cargo-deb's name for the real target directory.
+[package.metadata.deb]
+name = "kwinfo"
+section = "utils"
+priority = "optional"
+extended-description = """\
+KWinfo shows the hardware sensors of a Linux computer in one window modelled on the \
+Sensor Status window of HWiNFO64: temperatures, voltages, fans, clocks, power, usage, \
+drive and network rates and S.M.A.R.T. data, each with its minimum, maximum and \
+average, with live graphs, alerts, CSV logging and values in the system tray.
+.
+Sensors that only root may read (CPU power from RAPL, core voltages, S.M.A.R.T. data, \
+GPU load) come from kwinfo-helper, a small sandboxed service that D-Bus starts on \
+demand and polkit grants to the active local session. It never writes to the \
+hardware."""
+# $auto finds what the binaries link (glibc, libsensors5). eframe loads the windowing,
+# keyboard and graphics libraries at run time, which $auto cannot see, so they are listed
+# by hand. Vulkan is optional: wgpu falls back to OpenGL through EGL.
+depends = "$auto, libegl1, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, polkitd | policykit-1, dbus"
+recommends = "lm-sensors, smartmontools, libvulkan1"
+maintainer-scripts = "../../packaging/deb/"
+# A complete DEP-5 copyright file, used as it is.
+license-file = ["../../packaging/deb/copyright", "0"]
+assets = [
+  ["target/release/kwinfo", "usr/bin/", "755"],
+  ["target/release/kwinfo-cli", "usr/bin/", "755"],
+  ["target/release/kwinfo-helper", "usr/libexec/kwinfo/", "755"],
+  ["target/release/kwinfo-deb/root/etc/systemd/system/kwinfo-helper.service", "usr/lib/systemd/system/", "644"],
+  ["target/release/kwinfo-deb/root/usr/share/dbus-1/system-services/io.github.kywa92.KWinfo.Helper.service", "usr/share/dbus-1/system-services/", "644"],
+  ["target/release/kwinfo-deb/root/etc/dbus-1/system.d/io.github.kywa92.KWinfo.Helper.conf", "usr/share/dbus-1/system.d/", "644"],
+  ["target/release/kwinfo-deb/root/usr/share/polkit-1/actions/io.github.kywa92.KWinfo.policy", "usr/share/polkit-1/actions/", "644"],
+  ["target/release/kwinfo-deb/root/etc/modules-load.d/kwinfo.conf", "usr/lib/modules-load.d/", "644"],
+  ["target/release/kwinfo-deb/changelog.Debian.gz", "usr/share/doc/kwinfo/", "644"],
+  ["../../packaging/deb/lintian-overrides", "usr/share/lintian/overrides/kwinfo", "644"],
+  ["../../packaging/desktop/io.github.kywa92.KWinfo.desktop", "usr/share/applications/", "644"],
+  ["../../packaging/desktop/io.github.kywa92.KWinfo.metainfo.xml", "usr/share/metainfo/", "644"],
+  ["../../packaging/desktop/icons/hicolor/*/apps/io.github.kywa92.KWinfo.*", "usr/share/icons/hicolor/", "644"],
+  ["../../docs/man/kwinfo.1", "usr/share/man/man1/", "644"],
+  ["../../docs/man/kwinfo-cli.1", "usr/share/man/man1/", "644"],
+  ["../../docs/man/kwinfo-helper.8", "usr/share/man/man8/", "644"],
+  ["../../README.md", "usr/share/doc/kwinfo/", "644"],
+  ["../../docs/install.md", "usr/share/doc/kwinfo/", "644"],
+  ["../../docs/helper.md", "usr/share/doc/kwinfo/", "644"],
+  ["../../docs/diagnostics.md", "usr/share/doc/kwinfo/", "644"],
+]

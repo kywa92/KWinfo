@@ -1,0 +1,12 @@
+# Lintian overrides for the kwinfo package, each with the reason it is right.
+
+# KWinfo is packaged outside the Debian archive, so there is no ITP bug to close.
+kwinfo: initial-upload-closes-no-bugs
+
+# D-Bus activation starts kwinfo-helper.service (SystemdService= in the D-Bus service
+# file) on KWinfo's first call, and the helper exits when idle; it is never enabled.
+kwinfo: systemd-service-file-missing-install-key
+
+# The helper relies on systemd's sandboxing and on D-Bus activation through systemd, so
+# there is deliberately no init.d script.
+kwinfo: package-supports-alternative-init-but-no-init.d-script

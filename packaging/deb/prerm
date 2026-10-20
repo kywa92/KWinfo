@@ -1,0 +1,14 @@
+#!/bin/sh
+# prerm for kwinfo: stops the helper before its files go away. On upgrades it keeps
+# running until postinst restarts it.
+set -e
+
+case "$1" in
+    remove | deconfigure)
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-invoke stop kwinfo-helper.service >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,3 @@
+# `cargo xtask man` writes the manual pages in docs/man/ (see crates/xtask).
+[alias]
+xtask = "run --quiet --locked --package xtask --"

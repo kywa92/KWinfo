@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=KWinfo
+GenericName=Hardware Monitor
+Comment=Watch the temperatures, voltages, fans, clocks and power of your hardware
+Exec=kwinfo
+Icon=io.github.kywa92.KWinfo
+Terminal=false
+Categories=System;Monitor;HardwareSettings;
+Keywords=sensors;temperature;voltage;fan;power;clock;CPU;GPU;hwmon;lm-sensors;S.M.A.R.T.;HWiNFO;
+# The window's Wayland app id and X11 class (eframe's app_id), so that docks match the
+# running window to this entry.
+StartupWMClass=io.github.kywa92.KWinfo
+# egui-winit hands the launcher's activation token to the first window: X11 desktops end
+# their busy cursor, and Wayland compositors give the new window the focus.
+StartupNotify=true

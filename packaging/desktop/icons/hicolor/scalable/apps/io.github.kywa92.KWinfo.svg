@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>KWinfo</title>
+  <!-- KWinfo's icon: a sensor graph like the app's graph windows, in its dark palette
+       (PLAN.md 5.2). The 16 to 32 px renders come from the simpler variant in
+       packaging/desktop/icons/src; packaging/desktop/render-icons.sh draws them all. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="8" x2="0" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#383838"/>
+      <stop offset="1" stop-color="#1b1b1b"/>
+    </linearGradient>
+    <linearGradient id="fill" x1="0" y1="30" x2="0" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4da3ff" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#1e90ff" stop-opacity="0.12"/>
+    </linearGradient>
+    <clipPath id="screen">
+      <rect x="17" y="18" width="94" height="86" rx="8"/>
+    </clipPath>
+  </defs>
+  <rect x="8" y="12" width="112" height="110" rx="24" fill="#000000" opacity="0.35"/>
+  <rect x="8" y="8" width="112" height="110" rx="24" fill="url(#tile)"/>
+  <rect x="8.75" y="8.75" width="110.5" height="108.5" rx="23.25" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5"/>
+  <rect x="17" y="18" width="94" height="86" rx="8" fill="#0d0d0d"/>
+  <g clip-path="url(#screen)">
+    <path d="M17 39.5H111M17 61H111M17 82.5H111M40.5 18V104M64 18V104M87.5 18V104" stroke="#2e2e2e" stroke-width="2"/>
+    <path d="M17 76L25 72L32 78L40 56L47 63L55 44L62 66L70 60L78 70L86 46L93 54L100 50V104H17Z" fill="url(#fill)"/>
+    <path d="M17 76L25 72L32 78L40 56L47 63L55 44L62 66L70 60L78 70L86 46L93 54L100 50" fill="none" stroke="#4da3ff" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+  <circle cx="100" cy="50" r="6.5" fill="#ff7a1a" stroke="#0d0d0d" stroke-width="2.5"/>
+  <rect x="17" y="18" width="94" height="86" rx="8" fill="none" stroke="#3a3a3a" stroke-width="1.5"/>
+</svg>

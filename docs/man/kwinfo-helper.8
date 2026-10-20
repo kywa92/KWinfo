@@ -1,0 +1,77 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH KWINFO-HELPER 8 "" "KWinfo 0.1.0"
+.SH NAME
+kwinfo\-helper \- Privileged sensor helper for KWinfo: RAPL power, MSRs, S.M.A.R.T. and GPU load
+.SH SYNOPSIS
+\fBkwinfo\-helper\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIcommand\fR>
+.SH DESCRIPTION
+\fBkwinfo\-helper\fR reads, as root, the sensors the kernel keeps from other users, for \fBkwinfo\fR(1) and \fBkwinfo\-cli\fR(1): CPU package, core, GT, DRAM and platform power from the RAPL energy counters; core voltages, power\-limit status and package C\-state residency from model\-specific registers; S.M.A.R.T. data through \fBsmartctl\fR(8); and the engine load of Intel GPUs from the i915 performance counters. It never writes to the hardware and takes no paths or commands from its callers.
+.PP
+Nobody needs to run it by hand. As a D\-Bus system service (\fBserve\fR) it is started through systemd by D\-Bus activation on the first call to \fIio.github.kywa92.KWinfo.Helper\fR, and exits after two minutes without calls. polkit grants the action \fIio.github.kywa92.KWinfo.read\-sensors\fR to the active local session without a password and refuses remote and inactive sessions. Without the service, KWinfo can start the helper for one session through \fBpkexec\fR(1) (\fBstdio\fR).
+.PP
+The Debian package installs the service, with the helper in \fI/usr/libexec/kwinfo\fR. For the AppImage or a build from source, \fBinstall\fR copies the helper to \fI/usr/local/libexec/kwinfo\fR and writes the same files; \fBuninstall\fR removes exactly what it wrote.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH COMMANDS
+.SS serve
+\fBkwinfo\-helper serve\fR
+.PP
+Serve the D\-Bus system service (D\-Bus activation starts this as root)
+.SS stdio
+\fBkwinfo\-helper stdio\fR
+.PP
+Answer requests on standard input and output, one JSON message per line (KWinfo starts this through pkexec when no service is installed)
+.SS probe
+\fBkwinfo\-helper probe\fR
+.PP
+Show what the helper can read on this machine; run it as root
+.SS install
+\fBkwinfo\-helper install\fR
+.PP
+Install the helper, its systemd unit, D\-Bus files and polkit action (as root)
+.SS uninstall
+\fBkwinfo\-helper uninstall\fR
+.PP
+Remove what install added (as root)
+.SH FILES
+.TP
+\fI/usr/libexec/kwinfo/kwinfo\-helper\fR
+The helper, as the package installs it.
+.TP
+\fI/usr/local/libexec/kwinfo/kwinfo\-helper\fR
+The helper, as \fBinstall\fR copies it; \fIinstalled\-files\fR beside it lists everything \fBinstall\fR wrote.
+.TP
+\fIkwinfo\-helper.service\fR
+The systemd unit, sandboxed and without network access: in \fI/usr/lib/systemd/system\fR from the package, in \fI/etc/systemd/system\fR from \fBinstall\fR.
+.TP
+\fI/usr/share/dbus\-1/system\-services/io.github.kywa92.KWinfo.Helper.service\fR
+D\-Bus activation.
+.TP
+\fIio.github.kywa92.KWinfo.Helper.conf\fR
+The D\-Bus policy (only root may own the name): in \fI/usr/share/dbus\-1/system.d\fR from the package, in \fI/etc/dbus\-1/system.d\fR from \fBinstall\fR.
+.TP
+\fI/usr/share/polkit\-1/actions/io.github.kywa92.KWinfo.policy\fR
+The polkit action.
+.TP
+\fIkwinfo.conf\fR
+Loads the msr module at boot: in \fI/usr/lib/modules\-load.d\fR from the package, in \fI/etc/modules\-load.d\fR from \fBinstall\fR.
+.SH EXAMPLES
+.TP
+\fBsudo kwinfo\-helper probe\fR
+Every source the helper can open, why the others are missing, and two rounds of readings.
+.TP
+\fBkwinfo\-cli helper\fR
+What the service reads, asked the way KWinfo asks.
+.TP
+\fBjournalctl \-b \-u kwinfo\-helper.service\fR
+The service\*(Aqs log.
+.SH BUGS
+Report problems at \fIhttps://github.com/kywa92/KWinfo/issues\fR and attach the file that \fBkwinfo\-cli report\fR writes.
+.SH "SEE ALSO"
+\fBkwinfo\fR(1), \fBkwinfo\-cli\fR(1), \fBpkexec\fR(1), \fBpolkit\fR(8), \fBsmartctl\fR(8), \fBsystemd.exec\fR(5)

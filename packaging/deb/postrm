@@ -1,0 +1,18 @@
+#!/bin/sh
+# postrm for kwinfo: once the helper's unit and D-Bus files are gone, systemd and the
+# system bus forget them. The msr module stays loaded; other tools may use it.
+set -e
+
+case "$1" in
+    remove | purge)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload >/dev/null || true
+        fi
+        if [ -S /run/dbus/system_bus_socket ] && command -v dbus-send >/dev/null 2>&1; then
+            dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
+                /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

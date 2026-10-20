@@ -4,15 +4,33 @@ A Linux hardware monitor in the spirit of HWiNFO64's *Sensor Status* window and 
 floating sensor graphs. Written in Rust with [egui](https://github.com/emilk/egui), shipped
 as a `.deb` and an AppImage, with dark and light themes.
 
-**Status:** milestone M5. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
-`block`, `memory`, `network`, `power_supply`, plus lm-sensors labels) read real hardware on
-Linux; the Sensor Status window is complete (a tree-table with sub-groups, per-kind
-icons, context menus, a quick filter, a toolbar and a settings dialog, with every setting
-remembered between runs); every sensor has a live graph, in its own window or in a panel
-of the main window; and the privileged helper adds the root-only sensors (RAPL power,
-core VIDs and package C-states from MSRs, S.M.A.R.T., GPU engine load); and sensors can
-be logged to CSV, watched with alerts, and shown in the system tray. The `.deb` and the
-AppImage arrive in M6. See [PLAN.md](PLAN.md) for the full design and the milestone list.
+![The Sensor Status window with three live graphs, dark theme](docs/screenshots/sensor-status-dark.png)
+
+**Status:** version 0.1.0 is being prepared (milestone M6). The unprivileged Linux
+backends (`hwmon`, `cpu`, `intel_gpu`, `block`, `memory`, `network`, `power_supply`, plus
+lm-sensors labels) read real hardware on Linux; the Sensor Status window is complete (a
+tree-table with sub-groups, per-kind icons, context menus, a quick filter, a toolbar and a
+settings dialog, with every setting remembered between runs); every sensor has a live
+graph, in its own window or in a panel of the main window; the privileged helper adds the
+root-only sensors (RAPL power, core VIDs and package C-states from MSRs, S.M.A.R.T., GPU
+engine load); and sensors can be logged to CSV, watched with alerts, and shown in the
+system tray. KWinfo ships as a `.deb`, an AppImage and a `kwinfo-cli` tarball. See
+[PLAN.md](PLAN.md) for the full design and the milestone list.
+
+## Installing
+
+Download a package from the [releases](https://github.com/kywa92/KWinfo/releases): the
+`.deb` for Ubuntu 22.04+ and Debian 12+, the AppImage for other distributions with glibc
+2.35 or later, or the `kwinfo-cli` tarball for machines without a desktop.
+
+```bash
+sudo apt install ./kwinfo_0.1.0-1_amd64.deb
+```
+
+[docs/install.md](docs/install.md) covers each package, the helper for root-only sensors,
+and how to find and load the kernel module for a motherboard's sensor chip with
+`sensors-detect` (`nct6775`, `nct6683` on MSI boards, `it87` through DKMS, DIMM and SATA
+drive temperatures). The man pages are kwinfo(1), kwinfo-cli(1) and kwinfo-helper(8).
 
 ## Building
 
@@ -37,6 +55,15 @@ cargo run -p kwinfo-cli -- list --ids
 The `libsensors` cargo feature (on by default, Linux only) applies the labels, `ignore`
 and `compute` statements of `/etc/sensors3.conf` and `/etc/sensors.d/`. Build with
 `--no-default-features` to leave it out; nothing else needs `libsensors-dev` or `clang`.
+
+The packages are built by the scripts in `packaging/`, on Ubuntu 22.04 or in GitHub
+Actions (the Release workflow, which can be run by hand); see
+[packaging/README.md](packaging/README.md), which also describes making a release. The man
+pages in `docs/man/` are generated from the command lines:
+
+```bash
+cargo xtask man
+```
 
 ## The Sensor Status window
 
@@ -240,7 +267,9 @@ settings tabs, the context menu, the filter, the dialogs and the replayed 8700K 
 | `crates/kwinfo-app` | the eframe GUI, binary `kwinfo` |
 | `crates/kwinfo-cli` | the command line tool, binary `kwinfo-cli` |
 | `crates/kwinfo-diag` | per-run log files and `kwinfo-cli report` bundles |
-| `packaging/` | the helper's systemd unit, D-Bus and polkit files (desktop file and AppImage script in M6) |
+| `crates/xtask` | `cargo xtask man`: the man pages from the command lines |
+| `packaging/` | the helper's systemd unit, D-Bus and polkit files, the desktop entry, icon and AppStream metadata, and the scripts that build the `.deb`, the AppImage and the `kwinfo-cli` tarball |
+| `docs/` | the installation guide, helper and diagnostics guides, man pages and screenshots |
 | `tests/fixtures/` | sysfs/procfs trees used by tests and `--replay` |
 
 ## License

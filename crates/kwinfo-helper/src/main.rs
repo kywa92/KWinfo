@@ -1,68 +1,21 @@
 //! `kwinfo-helper`: KWinfo's privileged sensor helper. See the library documentation and
 //! docs/helper.md.
 
+mod args;
+
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
 use anyhow::bail;
-use clap::{Parser, Subcommand};
+use args::{Args, Command, SourceArgs};
+use clap::Parser as _;
 use kwinfo_core::{SysRoot, TemperatureUnit, format_value};
 use kwinfo_helper::install::{self, Layout};
 use kwinfo_helper::providers::Sources;
 use kwinfo_helper::{Helper, stdio};
 use kwinfo_ipc::{LOCAL_HELPER_PATH, PROTOCOL_VERSION, Request, Response};
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "kwinfo-helper",
-    version,
-    about = "Privileged sensor helper for KWinfo: RAPL power, MSRs, S.M.A.R.T. and GPU load"
-)]
-struct Args {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    /// Serve the D-Bus system service (D-Bus activation starts this as root)
-    Serve,
-    /// Answer requests on standard input and output, one JSON message per line (KWinfo
-    /// starts this through pkexec when no service is installed)
-    Stdio(SourceArgs),
-    /// Show what the helper can read on this machine; run it as root
-    Probe(SourceArgs),
-    /// Install the helper, its systemd unit, D-Bus files and polkit action (as root)
-    Install {
-        /// Install into this staging directory instead of / (packaging, tests)
-        #[arg(long, hide = true, value_name = "DIR")]
-        root: Option<PathBuf>,
-        /// The helper's path as the installed files name it
-        #[arg(long, hide = true, value_name = "PATH")]
-        helper_path: Option<String>,
-        /// Do not copy the helper itself (it is already in place)
-        #[arg(long, hide = true)]
-        no_copy: bool,
-    },
-    /// Remove what install added (as root)
-    Uninstall {
-        /// Uninstall from this staging directory instead of /
-        #[arg(long, hide = true, value_name = "DIR")]
-        root: Option<PathBuf>,
-    },
-}
-
-#[derive(clap::Args, Debug)]
-struct SourceArgs {
-    /// Read a captured tree instead of / (tests and demonstrations)
-    #[arg(long, hide = true, value_name = "DIR")]
-    root: Option<PathBuf>,
-    /// Use captured smartctl output from this directory instead of running smartctl
-    #[arg(long, hide = true, value_name = "DIR")]
-    smartctl_dir: Option<PathBuf>,
-}
 
 impl SourceArgs {
     fn sources(&self) -> Sources {

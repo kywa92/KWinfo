@@ -1,0 +1,123 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH KWINFO-CLI 1 "" "KWinfo 0.1.0"
+.SH NAME
+kwinfo\-cli \- Command line companion to KWinfo
+.SH SYNOPSIS
+\fBkwinfo\-cli\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIcommand\fR>
+.SH DESCRIPTION
+\fBkwinfo\-cli\fR runs the sensor backends of \fBkwinfo\fR(1) without a window. It lists what they read, shows what the privileged helper adds, bundles diagnostic reports, and captures snapshots and recordings of the sensor files that \fBkwinfo \-\-replay\fR plays back on any computer: for comparing with \fBsensors\fR(1), for bug reports and for test fixtures.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH COMMANDS
+.SS list
+\fBkwinfo\-cli list\fR [\fB\-\-mock\fR] [\fB\-\-replay\fR] [\fB\-\-fahrenheit\fR] [\fB\-\-ids\fR]
+.PP
+List every device and channel with its current value
+.TP
+\fB\-\-mock\fR
+Use the synthetic mock backend instead of real hardware
+.TP
+\fB\-\-replay\fR \fI<DIR>\fR
+Run the real backends against a captured tree instead of / (the output of \fBkwinfo\-cli snapshot\fR, or a test fixture)
+.TP
+\fB\-\-fahrenheit\fR
+Show temperatures in Fahrenheit
+.TP
+\fB\-\-ids\fR
+Show the stable id of every device and channel
+.SS helper
+\fBkwinfo\-cli helper\fR [\fB\-\-session\fR] [\fB\-\-fahrenheit\fR]
+.PP
+Show what the privileged helper reads: through the system service, or with \-\-session from a helper started with pkexec for this command
+.TP
+\fB\-\-session\fR
+Start the helper with pkexec (asks for an administrator password) instead of using the system service
+.TP
+\fB\-\-fahrenheit\fR
+Show temperatures in Fahrenheit
+.SS report
+\fBkwinfo\-cli report\fR [\fB\-\-out\fR] [\fB\-\-mock\fR] [\fB\-\-replay\fR] [\fB\-\-no\-inventory\fR]
+.PP
+Bundle the newest diagnostic logs, a machine summary, the configuration and the sensor inventory into one text file to attach to a bug report
+.TP
+\fB\-\-out\fR \fI<FILE>\fR
+File to write (default: a timestamped file next to the logs)
+.TP
+\fB\-\-mock\fR
+Take the inventory from the mock backend
+.TP
+\fB\-\-replay\fR \fI<DIR>\fR
+Take the inventory from a captured tree
+.TP
+\fB\-\-no\-inventory\fR
+Leave the sensor inventory out (no hardware access, faster)
+.SS snapshot
+\fBkwinfo\-cli snapshot\fR [\fB\-\-root\fR] <\fB\-\-out\fR>
+.PP
+Copy the sensor\-relevant parts of /sys and /proc into a directory, with serial numbers, WWNs and MAC addresses scrubbed, for test fixtures and bug reports
+.TP
+\fB\-\-out\fR \fI<DIR>\fR
+Directory to write; must not exist yet or be empty
+.TP
+\fB\-\-root\fR \fI<DIR>\fR [default: /]
+Capture from this tree instead of / (e.g. to re\-scrub an older capture)
+.SS record
+\fBkwinfo\-cli record\fR [\fB\-\-duration\fR] [\fB\-\-interval\fR] [\fB\-\-root\fR] <\fB\-\-out\fR>
+.PP
+Take a snapshot and then record every value that changes, frame by frame, so that \fB\-\-replay\fR shows usage, rates and temperatures moving as they did
+.TP
+\fB\-\-out\fR \fI<DIR>\fR
+Directory to write; must not exist yet or be empty
+.TP
+\fB\-\-duration\fR \fI<DURATION>\fR [default: 60s]
+How long to record: 90, 90s, 2m or 500ms
+.TP
+\fB\-\-interval\fR \fI<MS>\fR [default: 1000]
+Time between frames in milliseconds
+.TP
+\fB\-\-root\fR \fI<DIR>\fR [default: /]
+Record from this tree instead of /
+.SH "EXIT STATUS"
+0 on success; 1 after an error, which is described on standard error; 2 for a usage error.
+.SH ENVIRONMENT
+.TP
+\fBKWINFO_BACKEND\fR
+\fImock\fR makes \fBlist\fR use the synthetic sensors, as \fB\-\-mock\fR does.
+.TP
+\fBKWINFO_LOG\fR
+What goes to standard error, in the filter syntax of the Rust tracing library (default: warn).
+.TP
+\fBKWINFO_FILE_LOG\fR
+What goes to the log file (default: debug for KWinfo, info for the libraries).
+.TP
+\fBKWINFO_LOG_DIR\fR
+Directory for the log files.
+.TP
+\fBKWINFO_NO_FILE_LOG\fR
+Anything but 0 turns the log file off.
+.SH EXAMPLES
+.TP
+\fBkwinfo\-cli list \-\-ids\fR
+Every sensor with its value and the stable id that the settings file uses.
+.TP
+\fBkwinfo\-cli helper \-\-session\fR
+Starts the helper through \fBpkexec\fR(1) for this command and shows what it reads.
+.TP
+\fBsudo kwinfo\-cli snapshot \-\-out\fR \fImy\-machine\fR
+Captures the sensor files, including the RAPL counters only root may read, with serial numbers and MAC addresses scrubbed.
+.TP
+\fBkwinfo\-cli record \-\-duration 2m \-\-out\fR \fImy\-machine\fR
+Two minutes of readings for \fBkwinfo \-\-replay\fR \fImy\-machine\fR.
+.TP
+\fBkwinfo\-cli report\fR
+One text file to attach to a bug report.
+.SH BUGS
+Report problems at \fIhttps://github.com/kywa92/KWinfo/issues\fR and attach the file that \fBkwinfo\-cli report\fR writes.
+.SH "SEE ALSO"
+\fBkwinfo\fR(1), \fBkwinfo\-helper\fR(8), \fBsensors\fR(1), \fBsmartctl\fR(8)

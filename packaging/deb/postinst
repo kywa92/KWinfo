@@ -1,0 +1,35 @@
+#!/bin/sh
+# postinst for kwinfo: makes the helper's systemd unit and D-Bus files count at once and
+# loads the msr module it reads. The helper itself starts on demand (D-Bus activation).
+set -e
+
+reload_dbus() {
+    # dbus-daemon notices new configuration by itself; dbus-broker only when asked.
+    if [ -S /run/dbus/system_bus_socket ] && command -v dbus-send >/dev/null 2>&1; then
+        dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
+            /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1 || true
+    fi
+}
+
+case "$1" in
+    configure)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload >/dev/null || true
+            # A helper still running from the previous version is replaced now; otherwise
+            # the next call starts the new one.
+            deb-systemd-invoke try-restart kwinfo-helper.service >/dev/null 2>&1 || true
+            # /usr/lib/modules-load.d/kwinfo.conf loads msr at every boot; this loads it
+            # now. Skipped in chroots and image builds, where systemd is not running.
+            modprobe msr >/dev/null 2>&1 || true
+        fi
+        reload_dbus
+        if [ -e /usr/local/libexec/kwinfo/installed-files ]; then
+            echo "kwinfo: a helper installed earlier with 'kwinfo-helper install' is in"
+            echo "kwinfo: /usr/local/libexec/kwinfo, and its unit in /etc/systemd/system"
+            echo "kwinfo: overrides this package's. Remove it with:"
+            echo "kwinfo:   sudo /usr/local/libexec/kwinfo/kwinfo-helper uninstall"
+        fi
+        ;;
+esac
+
+exit 0
