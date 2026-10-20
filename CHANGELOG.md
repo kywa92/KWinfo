@@ -13,6 +13,18 @@ All notable changes to KWinfo are documented here. The format follows
 
 ### Added
 
+- CSV logging (milestone M5) on the sampler thread: a UTC ISO 8601 time and elapsed
+  seconds, then one column per sensor in its base unit; a new file when the logged sensors
+  change and, optionally, every day; every reading or a chosen interval; every listed
+  sensor or only the ones marked "Log this sensor"; optional start with KWinfo. The
+  toolbar's Logging button starts and stops it, Settings → Logging configures it.
+- Alerts: upper and lower limits per sensor (Set alert… in the sensor menu, Settings →
+  Alerts), with 2 % hysteresis; an orange Current cell while in alert, a toolbar message,
+  and a desktop notification on Linux (notify-rust).
+- Tray values on Linux: a StatusNotifierItem (ksni) per sensor added with "Add to tray",
+  its icon the value drawn in the sensor's colour, with Show/Hide, Remove from tray and
+  Quit; closing the window hides it in the tray while items are there.
+- `[logging]` and per-sensor `log`, `tray` and `alert` settings in `config.toml`.
 - The privileged helper (milestone M4), `kwinfo-helper`: RAPL power (package, IA
   cores, GT, DRAM, platform) averaged over at least 250 ms; Intel MSRs (core VIDs, core and
   package power-limit status, package C2-C10 residency); S.M.A.R.T. through `smartctl`

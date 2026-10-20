@@ -637,3 +637,150 @@ fn the_helper_tab_offers_install_and_reports_a_failed_pkexec() {
     harness.run();
     assert!(matches!(harness.state().helper_result(), Some(Err(_))));
 }
+
+#[test]
+fn logging_from_the_toolbar_writes_a_csv_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = Config::default();
+    config.logging.folder = Some(dir.path().to_path_buf());
+    config.logging.interval_ms = 0;
+    // A quick sampler for this one: rows come with ticks.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(780.0, 720.0))
+        .with_max_steps(MAX_STEPS)
+        .build_eframe(move |cc| {
+            KwinfoApp::new(
+                cc,
+                Startup {
+                    config,
+                    interval_ms: Some(150),
+                    ..Startup::in_memory(BackendChoice::Mock)
+                },
+            )
+        });
+    wait_for(&mut harness, |h| h.state().latest_snapshot().tick >= 1);
+    harness.get_by_label("Start logging").click();
+    harness.step();
+    wait_for(&mut harness, |h| h.state().logging_status().rows >= 2);
+    assert!(harness.state().logging_on());
+    harness.get_by_label("Stop logging").click();
+    harness.step();
+    wait_for(&mut harness, |h| !h.state().logging_status().active);
+
+    let files: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(files.len(), 1, "{files:?}");
+    let text = std::fs::read_to_string(&files[0]).unwrap();
+    assert!(
+        text.starts_with("time_utc,elapsed_s,CPU [#0]: Mock Hexa-Core 6000X / CPU Package [°C],"),
+        "{text}"
+    );
+    assert!(text.lines().count() >= 3);
+}
+
+#[test]
+fn an_alert_set_from_the_menu_starts_and_can_be_removed() {
+    let mut harness = app(Config::default(), None);
+    let core2 = id("cpu:mock/temp.core2");
+    menu(&mut harness, "Core #2", "Set alert…");
+    let field = harness.get_by_role_and_label(Role::TextInput, "Alert above");
+    field.focus();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::TextInput, "Alert above")
+        .type_text("0");
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .config()
+            .alert_of(&core2)
+            .and_then(|a| a.above),
+        Some(0.0)
+    );
+    // Checked at once, not at the next tick a minute away.
+    wait_for(&mut harness, |h| h.state().in_alert(&core2));
+
+    harness.state_mut().set_settings_tab(SettingsTab::Alerts);
+    harness.state_mut().set_settings_open(true);
+    harness.run();
+    assert!(harness.query_by_label("Notify for Core #2").is_some());
+    harness.get_by_label("Remove").click();
+    harness.run();
+    assert!(harness.state().config().alert_of(&core2).is_none());
+    wait_for(&mut harness, |h| !h.state().in_alert(&core2));
+}
+
+#[test]
+fn a_lower_limit_above_the_upper_one_is_refused() {
+    let mut harness = app(Config::default(), None);
+    menu(&mut harness, "Core #2", "Set alert…");
+    for (field, text) in [("Alert above", "50"), ("Alert below", "60")] {
+        harness
+            .get_by_role_and_label(Role::TextInput, field)
+            .focus();
+        harness.run();
+        harness
+            .get_by_role_and_label(Role::TextInput, field)
+            .type_text(text);
+    }
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert!(
+        harness
+            .query_by_label("The lower limit must be below the upper one.")
+            .is_some()
+    );
+    assert!(
+        harness
+            .state()
+            .config()
+            .alert_of(&id("cpu:mock/temp.core2"))
+            .is_none()
+    );
+}
+
+#[test]
+fn sensors_are_marked_for_the_log_and_offered_to_the_tray() {
+    let mut harness = app(Config::default(), None);
+    let core2 = id("cpu:mock/temp.core2");
+    menu(&mut harness, "Core #2", "Log this sensor");
+    assert!(
+        harness
+            .state()
+            .config()
+            .channel(&core2)
+            .is_some_and(|c| c.log)
+    );
+    menu(&mut harness, "Core #2", "Don't log this sensor");
+    assert!(harness.state().config().channel(&core2).is_none());
+    harness.get_by_label("Core #2").click_secondary();
+    harness.run();
+    assert!(harness.query_by_label("Add to tray").is_some());
+}
+
+#[test]
+fn the_logging_tab_sets_interval_and_sensors() {
+    let mut harness = app(Config::default(), None);
+    harness.state_mut().set_settings_tab(SettingsTab::Logging);
+    harness.state_mut().set_settings_open(true);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::ComboBox, "Interval")
+        .click();
+    harness.run();
+    harness.get_by_label("5 s").click();
+    harness.run();
+    assert_eq!(harness.state().config().logging.interval_ms, 5000);
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Marked sensors only (0 marked)")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().config().logging.sensors,
+        kwinfo_core::config::LogSensors::Marked
+    );
+}

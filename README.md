@@ -4,15 +4,15 @@ A Linux hardware monitor in the spirit of HWiNFO64's *Sensor Status* window and 
 floating sensor graphs. Written in Rust with [egui](https://github.com/emilk/egui), shipped
 as a `.deb` and an AppImage, with dark and light themes.
 
-**Status:** milestone M4. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
+**Status:** milestone M5. The unprivileged Linux backends (`hwmon`, `cpu`, `intel_gpu`,
 `block`, `memory`, `network`, `power_supply`, plus lm-sensors labels) read real hardware on
 Linux; the Sensor Status window is complete (a tree-table with sub-groups, per-kind
 icons, context menus, a quick filter, a toolbar and a settings dialog, with every setting
 remembered between runs); every sensor has a live graph, in its own window or in a panel
 of the main window; and the privileged helper adds the root-only sensors (RAPL power,
-core VIDs and package C-states from MSRs, S.M.A.R.T., GPU engine load). Logging, tray
-values and alerts arrive in M5, packages in M6. See [PLAN.md](PLAN.md) for the full design
-and the milestone list.
+core VIDs and package C-states from MSRs, S.M.A.R.T., GPU engine load); and sensors can
+be logged to CSV, watched with alerts, and shown in the system tray. The `.deb` and the
+AppImage arrive in M6. See [PLAN.md](PLAN.md) for the full design and the milestone list.
 
 ## Building
 
@@ -77,6 +77,24 @@ The row and toolbar icons are painted vector shapes rather than Phosphor glyphs:
   shows the graphs in a panel on the right of the main window instead; the toolbar's
   Graphs menu and Settings → Graphs switch between the two. The same menu tiles the
   graph windows beside the main window and closes them all.
+
+## Logging, alerts and the tray
+
+- **CSV logging.** The toolbar's document button starts and stops a log (a red dot while it
+  runs); Settings → Logging sets the folder (default `~/.local/share/kwinfo/logs`), the
+  interval, whether every listed sensor or only the ones marked "Log this sensor" are
+  logged, a new file every day, and starting with KWinfo. Files have a UTC time and the
+  seconds since the file began, then one column per sensor named
+  `<device> / <sensor> [<unit>]`, in the sensor's base unit (°C, V, W, bytes); a new file
+  starts whenever the logged sensors change.
+- **Alerts.** Right-click a sensor → *Set alert…* for an upper and/or lower limit, in the
+  unit shown. While the reading is past a limit its Current cell turns orange, the toolbar
+  says so and, if asked, a desktop notification appears (Linux). An alert ends once the
+  reading is 2 % back inside the limit, so it does not flap. Settings → Alerts lists them.
+- **Tray values (Linux).** Right-click a sensor → *Add to tray* puts its value in the
+  system tray as a small icon; hover for the full reading, click to show or hide KWinfo.
+  While anything is in the tray, closing the window hides it there (on Wayland it is
+  minimised). KDE shows tray items as they are; GNOME needs the AppIndicator extension.
 
 ## Settings
 

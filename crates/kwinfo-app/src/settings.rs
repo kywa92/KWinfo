@@ -1,5 +1,5 @@
-//! The settings window (PLAN.md 4.4): General, Theme, Columns, Graphs and Hidden sensors,
-//! plus the Logging, Helper and Alerts tabs that later milestones fill in.
+//! The settings window (PLAN.md 4.4): General, Theme, Columns, Graphs, Hidden sensors,
+//! Logging, Helper and Alerts.
 
 use egui::{Align, Button, Checkbox, ComboBox, Layout, RichText, ScrollArea, Spinner, Ui};
 use kwinfo_core::config::{Column, HISTORY_MINUTES_CHOICES};
@@ -83,16 +83,9 @@ impl KwinfoApp {
                     SettingsTab::Columns => self.columns_tab(ui),
                     SettingsTab::Graphs => self.graphs_tab(ui),
                     SettingsTab::Hidden => self.hidden_tab(ui, snapshot),
-                    SettingsTab::Logging => self.later(
-                        ui,
-                        "CSV logging (start and stop, interval, choice of sensors, daily files) \
-                         arrives in milestone M5.",
-                    ),
+                    SettingsTab::Logging => self.logging_tab(ui),
                     SettingsTab::Helper => self.helper_tab(ui),
-                    SettingsTab::Alerts => self.later(
-                        ui,
-                        "Per-sensor alerts with desktop notifications arrive in milestone M5.",
-                    ),
+                    SettingsTab::Alerts => self.alerts_tab(ui, snapshot),
                 }
             });
         if open != was_open {
@@ -438,11 +431,5 @@ impl KwinfoApp {
                     });
                 }
             });
-    }
-
-    fn later(&self, ui: &mut Ui, text: &str) {
-        ui.add_space(6.0);
-        ui.label(RichText::new(text).color(self.tokens().text_secondary));
-        ui.add_space(6.0);
     }
 }

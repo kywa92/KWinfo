@@ -40,10 +40,20 @@
 //! [devices."cpu:0"]
 //! collapsed_groups = ["Thread Usage"]
 //!
+//! [logging]
+//! interval_ms = 2000
+//! sensors = "marked"
+//!
 //! [channels."cpu:0/clock.core0"]
 //! label = "P-core 0"
 //! color = "#ff8c00"
 //! hidden = true
+//! log = true
+//! tray = true
+//!
+//! [channels."cpu:0/clock.core0".alert]
+//! above = 4900.0
+//! notify = true
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -79,6 +89,8 @@ pub struct Config {
     pub window: WindowSettings,
     #[serde(skip_serializing_if = "Graphs::is_default")]
     pub graphs: Graphs,
+    #[serde(skip_serializing_if = "LoggingSettings::is_default")]
+    pub logging: LoggingSettings,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub devices: BTreeMap<DeviceId, DeviceSettings>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -445,8 +457,112 @@ impl DeviceSettings {
     }
 }
 
+/// The CSV log intervals offered, in milliseconds; 0 means every reading.
+pub const LOG_INTERVAL_CHOICES_MS: [u64; 7] = [0, 1000, 2000, 5000, 10_000, 30_000, 60_000];
+
+/// Which sensors the CSV log covers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogSensors {
+    /// Every sensor the table lists: not hidden, not disabled.
+    #[default]
+    Visible,
+    /// The sensors marked with "Log this sensor".
+    Marked,
+}
+
+impl LogSensors {
+    pub const ALL: [LogSensors; 2] = [LogSensors::Visible, LogSensors::Marked];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LogSensors::Visible => "Every listed sensor",
+            LogSensors::Marked => "Marked sensors only",
+        }
+    }
+}
+
+/// CSV logging (PLAN.md section 2, item 9).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LoggingSettings {
+    /// Where the CSV files go; `None` is [`default_log_folder`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder: Option<PathBuf>,
+    /// Time between rows; 0 means every reading. Never shorter than the polling period.
+    pub interval_ms: u64,
+    pub sensors: LogSensors,
+    /// Start a new file every day (UTC).
+    pub rotate_daily: bool,
+    /// Start logging whenever KWinfo starts.
+    pub autostart: bool,
+}
+
+impl Default for LoggingSettings {
+    fn default() -> Self {
+        Self {
+            folder: None,
+            interval_ms: 1000,
+            sensors: LogSensors::Visible,
+            rotate_daily: false,
+            autostart: false,
+        }
+    }
+}
+
+impl LoggingSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The folder in effect.
+    pub fn folder(&self) -> PathBuf {
+        self.folder
+            .clone()
+            .or_else(default_log_folder)
+            .unwrap_or_else(|| PathBuf::from("kwinfo-logs"))
+    }
+}
+
+/// `logs` in KWinfo's data directory: `~/.local/share/kwinfo/logs` on Linux.
+pub fn default_log_folder() -> Option<PathBuf> {
+    directories::ProjectDirs::from("io.github", "kywa92", "kwinfo")
+        .map(|dirs| dirs.data_dir().join("logs"))
+}
+
+/// A sensor's alert thresholds, in its base unit (°C, V, W, ...).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AlertSettings {
+    /// Alert while the reading is above this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub above: Option<f64>,
+    /// Alert while the reading is below this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub below: Option<f64>,
+    /// Show a desktop notification when the alert starts.
+    pub notify: bool,
+}
+
+impl Default for AlertSettings {
+    fn default() -> Self {
+        Self {
+            above: None,
+            below: None,
+            notify: true,
+        }
+    }
+}
+
+impl AlertSettings {
+    /// At least one threshold is set.
+    pub fn is_set(&self) -> bool {
+        self.above.is_some() || self.below.is_some()
+    }
+}
+
 /// Settings of one sensor (a row of the table).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ChannelSettings {
     /// The user's name for the row, replacing the backend's label.
@@ -461,6 +577,14 @@ pub struct ChannelSettings {
     /// "Disable monitoring": the channel is not polled.
     #[serde(skip_serializing_if = "is_false")]
     pub disabled: bool,
+    /// "Log this sensor": in the CSV log when it covers marked sensors only.
+    #[serde(skip_serializing_if = "is_false")]
+    pub log: bool,
+    /// "Add to tray": its value is an icon in the system tray.
+    #[serde(skip_serializing_if = "is_false")]
+    pub tray: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert: Option<AlertSettings>,
 }
 
 impl ChannelSettings {
@@ -578,6 +702,44 @@ impl Config {
             .filter(|(_, c)| c.disabled)
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// Sensors hidden from the table.
+    pub fn hidden_channels(&self) -> HashSet<ChannelId> {
+        self.channels
+            .iter()
+            .filter(|(_, c)| c.hidden)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Sensors marked "Log this sensor".
+    pub fn logged_channels(&self) -> HashSet<ChannelId> {
+        self.channels
+            .iter()
+            .filter(|(_, c)| c.log)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Sensors shown in the tray, in id order.
+    pub fn tray_channels(&self) -> Vec<ChannelId> {
+        self.channels
+            .iter()
+            .filter(|(_, c)| c.tray)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Sensors with an alert.
+    pub fn alerts(&self) -> impl Iterator<Item = (&ChannelId, &AlertSettings)> {
+        self.channels
+            .iter()
+            .filter_map(|(id, c)| Some((id, c.alert.as_ref().filter(|a| a.is_set())?)))
+    }
+
+    pub fn alert_of(&self, id: &ChannelId) -> Option<&AlertSettings> {
+        self.channel(id)?.alert.as_ref().filter(|a| a.is_set())
     }
 
     pub fn disabled_devices(&self) -> HashSet<DeviceId> {
@@ -1021,5 +1183,56 @@ mod tests {
             ..Graphs::default()
         };
         assert_eq!(silly.history_s(), 60);
+    }
+
+    #[test]
+    fn logging_tray_and_alerts_round_trip() {
+        assert!(!Config::default().to_toml().unwrap().contains("logging"));
+        let mut config = Config::default();
+        config.logging.interval_ms = 2000;
+        config.logging.sensors = LogSensors::Marked;
+        config.logging.rotate_daily = true;
+        let id = ChannelId::from_raw("cpu:0/temp.package");
+        config.update_channel(&id, |c| {
+            c.log = true;
+            c.tray = true;
+            c.alert = Some(AlertSettings {
+                above: Some(90.0),
+                below: None,
+                notify: false,
+            });
+        });
+        let text = config.to_toml().unwrap();
+        assert!(text.contains("[logging]"), "{text}");
+        assert!(text.contains("sensors = \"marked\""), "{text}");
+        assert!(text.contains(".alert]"), "{text}");
+        let back = Config::from_toml(&text).unwrap();
+        assert_eq!(back, config);
+        assert_eq!(back.logged_channels(), HashSet::from([id.clone()]));
+        assert_eq!(back.tray_channels(), vec![id.clone()]);
+        assert_eq!(back.alert_of(&id).and_then(|a| a.above), Some(90.0));
+        assert_eq!(back.alerts().count(), 1);
+
+        // An alert without thresholds is no alert, and clearing everything removes the entry.
+        config.update_channel(&id, |c| {
+            c.alert = Some(AlertSettings::default());
+            c.log = false;
+            c.tray = false;
+        });
+        assert_eq!(config.alerts().count(), 0);
+        config.update_channel(&id, |c| c.alert = None);
+        assert!(config.channels.is_empty());
+    }
+
+    #[test]
+    fn the_log_folder_has_a_default() {
+        let settings = LoggingSettings::default();
+        assert_eq!(settings.interval_ms, 1000);
+        assert!(settings.folder().ends_with("logs"));
+        let custom = LoggingSettings {
+            folder: Some(PathBuf::from("/tmp/kw")),
+            ..LoggingSettings::default()
+        };
+        assert_eq!(custom.folder(), PathBuf::from("/tmp/kw"));
     }
 }

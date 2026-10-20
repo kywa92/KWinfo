@@ -108,6 +108,25 @@ fn customised() -> Config {
         d.disabled = true;
         d.collapsed = true;
     });
+    // An alert in progress (Core #4 is always above 1 °C) and one waiting, sensors
+    // marked for the log, and one in the tray.
+    config.update_channel(&id("cpu:mock/temp.core4"), |c| {
+        c.alert = Some(kwinfo_core::config::AlertSettings {
+            above: Some(1.0),
+            below: None,
+            notify: true,
+        });
+    });
+    config.update_channel(&id("cpu:mock/power.package"), |c| {
+        c.alert = Some(kwinfo_core::config::AlertSettings {
+            above: Some(95.0),
+            below: None,
+            notify: false,
+        });
+        c.log = true;
+        c.tray = true;
+    });
+    config.update_channel(&id("cpu:mock/usage.total"), |c| c.log = true);
     config
 }
 
@@ -152,6 +171,8 @@ fn app_window_settings() {
         (SettingsTab::General, "general"),
         (SettingsTab::Columns, "columns"),
         (SettingsTab::Hidden, "hidden"),
+        (SettingsTab::Logging, "logging"),
+        (SettingsTab::Alerts, "alerts"),
     ];
     for (mode, theme) in [(ThemeMode::Dark, "dark"), (ThemeMode::Light, "light")] {
         for (tab, tab_name) in tabs {
@@ -331,5 +352,29 @@ fn app_window_helper_tab() {
         harness.state_mut().set_settings_open(true);
         harness.run_steps(6);
         write(&mut harness, name);
+    }
+}
+
+/// Tray icons as raw ARGB files in `target/preview/` (`tray-<text>-<size>.argb`), for a
+/// look at them with an image tool.
+#[test]
+#[ignore = "writes preview files; run with --ignored"]
+fn tray_icons() {
+    use kwinfo_app::theme::DARK;
+    use kwinfo_app::tray::render_icon;
+    use kwinfo_core::Kind;
+    let out = out_dir();
+    std::fs::create_dir_all(&out).unwrap();
+    for (text, kind) in [
+        ("48", Kind::Temperature),
+        ("4.3", Kind::Clock),
+        ("1.20", Kind::Voltage),
+        ("17", Kind::Usage),
+        ("1100", Kind::Fan),
+    ] {
+        for size in [24u32, 48] {
+            let data = render_icon(text, DARK.graph_color(kind), size);
+            std::fs::write(out.join(format!("tray-{text}-{size}.argb")), data).unwrap();
+        }
     }
 }

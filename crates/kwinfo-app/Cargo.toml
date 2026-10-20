@@ -23,17 +23,23 @@ default = ["libsensors"]
 libsensors = ["kwinfo-core/libsensors"]
 
 [dependencies]
+ab_glyph.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 dark-light.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_extras.workspace = true
+epaint_default_fonts.workspace = true
 kwinfo-core.workspace = true
 kwinfo-diag = { path = "../kwinfo-diag" }
 kwinfo-ipc.workspace = true
 parking_lot.workspace = true
 tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni.workspace = true
+notify-rust.workspace = true
 
 [dev-dependencies]
 egui_kittest.workspace = true

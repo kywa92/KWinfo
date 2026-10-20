@@ -15,7 +15,7 @@ use kwinfo_core::{
 use kwinfo_diag::action;
 
 use crate::diagnostics::{self, ReportJob};
-use crate::dialogs::{ColorDialog, Outcome, RenameDialog};
+use crate::dialogs::{AlertDialog, ColorDialog, Outcome, RenameDialog};
 use crate::graphs::{self, GraphHub};
 use crate::helper::HelperJob;
 use crate::icons::{self, Icon};
@@ -115,6 +115,25 @@ pub struct KwinfoApp {
     report_job: Option<ReportJob>,
     /// The last diagnostic report's file, or why it could not be written.
     pub(crate) report_result: Option<Result<PathBuf, String>>,
+    /// The user wants a CSV log; the sampler writes it.
+    pub(crate) logging_on: bool,
+    /// The log last asked of the sampler, to notice changes.
+    pub(crate) sent_log_spec: Option<kwinfo_core::logging::LogSpec>,
+    /// The Logging tab's folder field, as typed.
+    pub(crate) log_folder_text: String,
+    /// The alerts in progress.
+    pub(crate) alerts: kwinfo_core::alerts::AlertTracker,
+    /// The snapshot tick the alerts were last checked at.
+    pub(crate) alert_tick: u64,
+    pub(crate) alert_dialog: Option<AlertDialog>,
+    /// Sensor values in the system tray.
+    pub(crate) tray: crate::tray::TrayManager,
+    /// The main window is hidden in the tray.
+    pub(crate) window_hidden: bool,
+    /// The tray problem last shown, so that it is shown once.
+    pub(crate) tray_problem: Option<String>,
+    /// Quit was asked for: closing the window must not hide it in the tray.
+    pub(crate) quitting: bool,
 }
 
 impl KwinfoApp {
@@ -156,6 +175,13 @@ impl KwinfoApp {
         theme::install(&cc.egui_ctx);
         let system_theme = SystemTheme::start(cc.egui_ctx.clone());
         let snapshot = sampler.snapshot();
+        let config_autostart = config.logging.autostart;
+        let log_folder_text = config
+            .logging
+            .folder
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
         let mut app = Self {
             sampler,
             graphs,
@@ -185,6 +211,16 @@ impl KwinfoApp {
             report_out,
             report_job: None,
             report_result: None,
+            logging_on: config_autostart,
+            sent_log_spec: None,
+            log_folder_text,
+            alerts: kwinfo_core::alerts::AlertTracker::new(),
+            alert_tick: 0,
+            alert_dialog: None,
+            tray: crate::tray::TrayManager::new(cc.egui_ctx.clone()),
+            window_hidden: false,
+            tray_problem: None,
+            quitting: false,
         };
         // Before the sampler's first tick, so disabled sensors are never read.
         app.sync_disabled();
@@ -338,6 +374,7 @@ impl KwinfoApp {
     /// Saves and closes the window.
     pub(crate) fn quit(&mut self, ctx: &egui::Context) {
         action!("app.quit");
+        self.quitting = true;
         self.persistence.flush(&self.config);
         ctx.send_viewport_cmd(ViewportCommand::Close);
     }
@@ -369,6 +406,78 @@ impl KwinfoApp {
                 self.config.window.width = Some(size.x);
                 self.config.window.height = Some(size.y);
             }
+        }
+    }
+
+    /// Shows or hides the main window (from the tray). Wayland cannot hide windows, so
+    /// there the window is minimised instead.
+    pub(crate) fn show_window(&mut self, ctx: &egui::Context, show: bool) {
+        action!("window.tray", visible = show);
+        if self.wayland {
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(!show));
+        } else {
+            ctx.send_viewport_cmd(ViewportCommand::Visible(show));
+        }
+        if show {
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+        self.window_hidden = !show;
+    }
+
+    /// Handles what the user did in the tray, then brings the tray items up to date.
+    fn sync_tray(&mut self, ctx: &egui::Context, snapshot: &Snapshot) {
+        for event in self.tray.events() {
+            match event {
+                crate::tray::TrayEvent::Toggle => self.show_window(ctx, self.window_hidden),
+                crate::tray::TrayEvent::Show => self.show_window(ctx, true),
+                crate::tray::TrayEvent::Hide => self.show_window(ctx, false),
+                crate::tray::TrayEvent::Remove(id) => {
+                    action!("sensor.tray", channel = %id, on = false, via = "tray");
+                    self.config.update_channel(&id, |c| c.tray = false);
+                }
+                crate::tray::TrayEvent::Quit => self.quit(ctx),
+            }
+        }
+        let temperature = self.config.general.temperature_unit;
+        let wanted: Vec<crate::tray::TrayView> = self
+            .config
+            .tray_channels()
+            .into_iter()
+            .filter_map(|id| {
+                let (device, entry) = snapshot.devices.iter().find_map(|d| {
+                    d.channels
+                        .iter()
+                        .find(|c| c.channel.id == id)
+                        .map(|c| (d, c))
+                })?;
+                let c = &entry.channel;
+                let value = entry.stats.current();
+                let title = self.config.label_of(c).to_string();
+                Some(crate::tray::TrayView {
+                    tooltip: format!(
+                        "{} · {}",
+                        kwinfo_core::format_value(value, c.unit, c.decimals, temperature),
+                        device.device.label
+                    ),
+                    text: crate::tray::tray_text(value, c.unit, temperature),
+                    color: self.config.color_of(&id).map_or_else(
+                        || crate::theme::DARK.graph_color(c.kind),
+                        |rgb| egui::Color32::from_rgb(rgb.r, rgb.g, rgb.b),
+                    ),
+                    title,
+                    channel: id,
+                })
+            })
+            .collect();
+        let any = !wanted.is_empty();
+        self.tray.sync(wanted, self.window_hidden);
+        // Say once why tray items are missing (no tray host on GNOME, not Linux).
+        let problem = self.tray.problem().filter(|_| any).map(str::to_string);
+        if problem != self.tray_problem {
+            if let Some(problem) = &problem {
+                self.flash(problem.clone());
+            }
+            self.tray_problem = problem;
         }
     }
 
@@ -412,6 +521,7 @@ impl KwinfoApp {
             }
             TableAction::Copied(text) => self.flash(format!("Copied {text}")),
             TableAction::ResetWidths => {}
+            TableAction::EditAlert(id) => self.open_alert_dialog(&id),
         }
     }
 
@@ -521,8 +631,18 @@ impl eframe::App for KwinfoApp {
             self.applied = Some(palette);
         }
         self.remember_window_size(ctx);
+        // Also while the window is hidden in the tray, when `ui` does not run.
+        let snapshot = self.sampler.snapshot();
+        self.check_alerts(&snapshot);
+        self.sync_logging();
+        self.sync_tray(ctx, &snapshot);
         if ctx.input(|i| i.viewport().close_requested()) {
-            self.persistence.flush(&self.config);
+            if !self.quitting && self.tray.active() {
+                ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+                self.show_window(ctx, false);
+            } else {
+                self.persistence.flush(&self.config);
+            }
         }
     }
 
@@ -570,6 +690,7 @@ impl eframe::App for KwinfoApp {
         // the table does; graph windows are shown from here too.
         self.graphs_frame(ui, &snapshot);
         let graphed = self.graphed();
+        let alerting = self.alerting();
         let mut actions = Vec::new();
         egui::CentralPanel::default()
             .frame(Frame::new().fill(tokens.table_bg))
@@ -582,12 +703,14 @@ impl eframe::App for KwinfoApp {
                         config: &mut self.config,
                         tokens,
                         graphed: &graphed,
+                        alerting: &alerting,
                     };
                     actions = table::show(ui, view, &mut self.table);
                 }
             });
         self.settings_window(&ctx, &snapshot);
         self.dialogs(&ctx);
+        self.alert_dialog_frame(&ctx);
         for action in actions {
             self.apply(&ctx, action, &snapshot);
         }

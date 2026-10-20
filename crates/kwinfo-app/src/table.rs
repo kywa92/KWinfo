@@ -104,6 +104,8 @@ pub enum TableAction {
     Copied(String),
     /// The column widths were reset from the header menu.
     ResetWidths,
+    /// Set or change a sensor's alert.
+    EditAlert(ChannelId),
 }
 
 /// One visible row.
@@ -234,6 +236,8 @@ pub struct TableView<'a> {
     pub tokens: &'a ThemeTokens,
     /// Sensors with an open graph; their rows get a graph marker.
     pub graphed: &'a HashSet<ChannelId>,
+    /// Sensors in alert; their Current cell is highlighted.
+    pub alerting: &'a HashSet<ChannelId>,
 }
 
 /// Shows the table and returns what the application should do.
@@ -243,6 +247,7 @@ pub fn show(ui: &mut Ui, view: TableView<'_>, state: &mut TableState) -> Vec<Tab
         config,
         tokens,
         graphed,
+        alerting,
     } = view;
     let layout = layout(snapshot, config, state.active_filter());
     let columns: Vec<Column> = config.columns.visible().collect();
@@ -282,6 +287,7 @@ pub fn show(ui: &mut Ui, view: TableView<'_>, state: &mut TableState) -> Vec<Tab
                     temperature,
                     filtering: layout.filtered,
                     graphed,
+                    alerting,
                     actions: &mut actions,
                 };
                 match layout.rows[row.index()] {
@@ -385,6 +391,7 @@ struct RowContext<'a, 'b> {
     temperature: TemperatureUnit,
     filtering: bool,
     graphed: &'a HashSet<ChannelId>,
+    alerting: &'a HashSet<ChannelId>,
     actions: &'b mut Vec<TableAction>,
 }
 
@@ -542,6 +549,7 @@ fn channel_row(
         )
     };
     let is_selected = selected == Some(&channel.id);
+    let in_alert = cx.alerting.contains(&channel.id);
     row.set_selected(is_selected);
     let stats: Stats = entry.stats;
     let (unit, decimals, temperature) = (channel.unit, channel.decimals, cx.temperature);
@@ -566,7 +574,10 @@ fn channel_row(
                 }
             }
             Column::Current => {
-                if !is_selected {
+                // In alert: HWiNFO's orange cell, dark text on it in both themes.
+                if in_alert {
+                    fill(ui, tokens.highlight);
+                } else if !is_selected {
                     fill(ui, tokens.current_tint);
                 }
                 if disabled {
@@ -577,7 +588,9 @@ fn channel_row(
                             .color(tokens.text_secondary),
                     );
                 } else {
-                    let color = if muted {
+                    let color = if in_alert {
+                        crate::theme::LIGHT.text_primary
+                    } else if muted {
                         value_color
                     } else {
                         custom.unwrap_or(value_color)

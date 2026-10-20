@@ -36,10 +36,7 @@ impl KwinfoApp {
                 action!("stats.reset_all");
                 self.sampler.reset_all();
             }
-            ui.add_enabled_ui(false, |ui| {
-                icons::button(ui, Icon::Document, None, "Logging")
-                    .on_disabled_hover_text("CSV logging arrives in milestone M5");
-            });
+            self.logging_button(ui);
             ui.separator();
             icons::icon(ui, Icon::Stopwatch, tokens.text_secondary);
             ui.monospace(format_elapsed(snapshot.elapsed()))

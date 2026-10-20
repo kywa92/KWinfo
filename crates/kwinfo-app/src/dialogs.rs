@@ -1,8 +1,9 @@
-//! Small modal dialogs: renaming a sensor and choosing its colour.
+//! Small modal dialogs: renaming a sensor, choosing its colour, and setting its alert.
 
 use egui::{Align, Align2, Color32, DragValue, FontId, Id, Key, Layout, Mesh, Modal, Rect};
 use egui::{Response, RichText, Role, Sense, Shape, Stroke, TextEdit, Ui, WidgetInfo, pos2, vec2};
-use kwinfo_core::{ChannelId, Rgb};
+use kwinfo_core::config::AlertSettings;
+use kwinfo_core::{ChannelId, Rgb, TemperatureUnit, Unit, format_input, format_value, parse_input};
 
 use crate::theme::{DARK, LIGHT, ThemeTokens};
 
@@ -362,6 +363,164 @@ fn preview(ui: &mut Ui, tokens: &ThemeTokens, rgb: Rgb, label: &str, theme: &str
         font,
         tokens.text_secondary,
     );
+}
+
+/// "Set alert…" from a sensor's context menu: thresholds above and below which the
+/// sensor alerts, in the unit the table shows.
+pub struct AlertDialog {
+    pub channel: ChannelId,
+    label: String,
+    unit: Unit,
+    temperature: TemperatureUnit,
+    current: String,
+    above: String,
+    below: String,
+    notify: bool,
+    existing: bool,
+    error: Option<String>,
+    focus: bool,
+}
+
+impl AlertDialog {
+    pub fn new(
+        channel: ChannelId,
+        label: &str,
+        (unit, decimals, temperature): (Unit, u8, TemperatureUnit),
+        current: Option<f64>,
+        existing: Option<&AlertSettings>,
+    ) -> Self {
+        let field = |v: Option<f64>| {
+            v.map(|v| format_input(v, unit, decimals, temperature))
+                .unwrap_or_default()
+        };
+        Self {
+            channel,
+            label: label.to_string(),
+            unit,
+            temperature,
+            current: format_value(current, unit, decimals, temperature),
+            above: field(existing.and_then(|a| a.above)),
+            below: field(existing.and_then(|a| a.below)),
+            notify: existing.is_none_or(|a| a.notify),
+            existing: existing.is_some(),
+            error: None,
+            focus: true,
+        }
+    }
+
+    /// The unit the fields are in, for their suffix.
+    fn unit_symbol(&self) -> &'static str {
+        if self.unit == Unit::Celsius {
+            self.temperature.symbol()
+        } else {
+            self.unit.symbol()
+        }
+    }
+
+    /// Shows the dialog; returns the outcome when it closes. `Apply(None)` removes the
+    /// alert.
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        tokens: &ThemeTokens,
+    ) -> Option<Outcome<Option<AlertSettings>>> {
+        let mut outcome = None;
+        let suffix = self.unit_symbol();
+        let modal = Modal::new(Id::unique("sensor-alert")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.heading("Sensor alert");
+            ui.add_space(2.0);
+            ui.label(
+                RichText::new(format!("{} · now {}", self.label, self.current))
+                    .color(tokens.text_secondary),
+            );
+            ui.add_space(8.0);
+            let mut entered = false;
+            egui::Grid::new("alert-fields")
+                .num_columns(3)
+                .spacing([8.0, 6.0])
+                .show(ui, |ui| {
+                    let label = ui.label("Alert above");
+                    let edit = ui
+                        .add(
+                            TextEdit::singleline(&mut self.above)
+                                .hint_text("no limit")
+                                .desired_width(120.0),
+                        )
+                        .labelled_by(label.id);
+                    if std::mem::take(&mut self.focus) {
+                        edit.request_focus();
+                    }
+                    entered |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                    ui.label(suffix);
+                    ui.end_row();
+                    let label = ui.label("Alert below");
+                    let edit = ui
+                        .add(
+                            TextEdit::singleline(&mut self.below)
+                                .hint_text("no limit")
+                                .desired_width(120.0),
+                        )
+                        .labelled_by(label.id);
+                    entered |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                    ui.label(suffix);
+                    ui.end_row();
+                });
+            ui.checkbox(
+                &mut self.notify,
+                "Show a desktop notification when it starts",
+            );
+            if let Some(error) = &self.error {
+                ui.label(RichText::new(error).color(tokens.text_primary));
+            }
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if self.existing && ui.button("Remove alert").clicked() {
+                    outcome = Some(Outcome::Apply(None));
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("OK").clicked() || entered {
+                        outcome = self.apply();
+                    }
+                    if ui.button("Cancel").clicked() {
+                        outcome = Some(Outcome::Cancel);
+                    }
+                });
+            });
+        });
+        if outcome.is_none() && modal.should_close() {
+            outcome = Some(Outcome::Cancel);
+        }
+        outcome
+    }
+
+    /// The thresholds typed, or `None` (with an error shown) when they make no sense.
+    fn apply(&mut self) -> Option<Outcome<Option<AlertSettings>>> {
+        let parse = |text: &str| -> Result<Option<f64>, ()> {
+            if text.trim().is_empty() {
+                return Ok(None);
+            }
+            parse_input(text, self.unit, self.temperature)
+                .map(Some)
+                .ok_or(())
+        };
+        let (Ok(above), Ok(below)) = (parse(&self.above), parse(&self.below)) else {
+            self.error = Some("Enter a number, or leave the field empty for no limit.".to_string());
+            return None;
+        };
+        if let (Some(above), Some(below)) = (above, below)
+            && below >= above
+        {
+            self.error = Some("The lower limit must be below the upper one.".to_string());
+            return None;
+        }
+        let alert = AlertSettings {
+            above,
+            below,
+            notify: self.notify,
+        };
+        Some(Outcome::Apply(alert.is_set().then_some(alert)))
+    }
 }
 
 #[cfg(test)]

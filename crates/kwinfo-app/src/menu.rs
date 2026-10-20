@@ -57,8 +57,47 @@ pub fn channel(
         actions.push(TableAction::ShowGraph(id.clone()));
     }
     ui.separator();
-    ui.add_enabled(false, Button::new("Add to tray"))
-        .on_disabled_hover_text("Tray values arrive in milestone M5");
+    let (tray, tray_hint) = if settings.tray {
+        (
+            "Remove from tray",
+            "Take this sensor's value out of the system tray",
+        )
+    } else {
+        (
+            "Add to tray",
+            "Show this sensor's value as an icon in the system tray",
+        )
+    };
+    // Recorded everywhere; outside Linux the toolbar says tray values need a Linux desktop.
+    if ui.button(tray).on_hover_text(tray_hint).clicked() {
+        action!("sensor.tray", channel = %id, on = !settings.tray, via = "menu");
+        config.update_channel(id, |c| c.tray = !settings.tray);
+    }
+    let log = if settings.log {
+        "Don't log this sensor"
+    } else {
+        "Log this sensor"
+    };
+    if ui
+        .button(log)
+        .on_hover_text("Marks the sensor for the CSV log when it covers marked sensors only (Settings → Logging)")
+        .clicked()
+    {
+        action!("sensor.log", channel = %id, on = !settings.log);
+        config.update_channel(id, |c| c.log = !settings.log);
+    }
+    let alert = if config.alert_of(id).is_some() {
+        "Edit alert…"
+    } else {
+        "Set alert…"
+    };
+    if ui
+        .button(alert)
+        .on_hover_text("Be told when this sensor goes above or below a limit")
+        .clicked()
+    {
+        actions.push(TableAction::EditAlert(id.clone()));
+    }
     ui.separator();
     if ui.button("Rename…").clicked() {
         actions.push(TableAction::Rename(id.clone()));

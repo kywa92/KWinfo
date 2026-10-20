@@ -52,7 +52,7 @@ The System Summary and hardware tree visible in references 4 and 6 are out of sc
 8. Quick filter (Ctrl+F) over sensor names. Nice to have.
 9. CSV logging: ISO timestamp column, one column per selected channel, interval ≥ polling period, daily rotation optional.
 10. Tray values: one StatusNotifierItem per chosen sensor, rendering the value as text with its colour, tooltip with the label, menu with Show/Hide window and Quit.
-11. Alerts: per-sensor threshold with desktop notification and row highlight. Ships in v1 if time allows, else v1.1.
+11. Alerts: per-sensor threshold with desktop notification and row highlight. (Shipped in M5.)
 12. Settings: polling period, S.M.A.R.T. period, theme (Auto/Dark/Light), temperature unit, start minimised, autostart, remember layout, logging defaults, helper management, hidden/disabled sensor lists.
 
 ### Graph windows
@@ -346,6 +346,17 @@ Cinnamon, XFCE). For each tray sensor the app rasterises the value text into a s
 bitmap (`ab_glyph`) whenever the text changes and publishes it as the icon. Tooltip shows the
 full label; the menu has Show/Hide, Remove from tray, Quit. Closing the main window while
 tray icons exist minimises to the tray instead of quitting.
+
+*As built (M5):* one item per sensor, its icon the value in at most about four characters
+(`48`, `4.3` GHz, `1.20` V) drawn with egui's bundled Hack font in the sensor's colour on a
+dark rounded backdrop, so it reads on light and dark panels; 24 and 48 px. Clicking an item
+shows or hides the window. Hiding uses `ViewportCommand::Visible`; Wayland cannot hide
+windows, so there the window is minimised instead. Without a StatusNotifierItem host (stock
+GNOME) the toolbar says so once. CSV logging runs on the sampler thread
+(`kwinfo_core::logging`): UTC ISO 8601 time and elapsed seconds, then one column per sensor
+in its base unit; a new file whenever the columns change, and optionally daily. Alerts
+(`kwinfo_core::alerts`) have above/below thresholds with 2 % hysteresis, an orange Current
+cell like HWiNFO's, and a notify-rust notification on Linux.
 
 ### 4.4 Settings and setup dialogs
 

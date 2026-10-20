@@ -17,17 +17,25 @@ publish = false
 kwinfo-core = { path = "crates/kwinfo-core", default-features = false }
 kwinfo-ipc = { path = "crates/kwinfo-ipc" }
 
+ab_glyph = "0.2.32"
 anyhow = "1.0"
 arc-swap = "1.7"
 clap = { version = "4.5", features = ["derive", "env"] }
+csv = "1.4"
 dark-light = "3.0"
 directories = "6.0"
 eframe = "0.37.0"
 egui = "0.37.0"
 egui_extras = "0.37.0"
+# The fonts egui bundles; tray icons draw their digits with Hack.
+epaint_default_fonts = "0.37.0"
 egui_kittest = { version = "0.37.0", features = ["wgpu", "snapshot", "eframe"] }
+# StatusNotifierItem tray icons; async-io matches zbus elsewhere in the tree.
+ksni = { version = "0.3.6", default-features = false, features = ["async-io", "blocking"] }
 libc = "0.2"
 lm-sensors = "0.5"
+# Desktop notifications for alerts (Linux; the default backend is zbus).
+notify-rust = "4.18"
 parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"

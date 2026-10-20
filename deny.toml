@@ -38,7 +38,8 @@ allow = [
   "Unicode-3.0",
   "Unicode-DFS-2016",
   "CDLA-Permissive-2.0",
-  "Ubuntu-font-1.0", # egui's bundled Ubuntu-Light font
+  "Ubuntu-font-1.0",
+  "Unlicense", # ksni (StatusNotifierItem tray) # egui's bundled Ubuntu-Light font
 ]
 confidence-threshold = 0.8
 

@@ -5,11 +5,13 @@
 //! The GUI (`kwinfo-app`) and the command line tool (`kwinfo-cli`) only ever talk to
 //! this crate; they never read hardware themselves.
 
+pub mod alerts;
 pub mod backend;
 pub mod backends;
 pub mod config;
 pub mod format;
 pub mod history;
+pub mod logging;
 pub mod mock;
 pub mod model;
 pub mod recording;

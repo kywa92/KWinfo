@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use arc_swap::ArcSwap;
 use parking_lot::Mutex;
@@ -13,6 +13,7 @@ use tracing::{debug, info, warn};
 
 use crate::backend::Backend;
 use crate::history::History;
+use crate::logging::{CsvLogger, LogSpec, LogStatus};
 use crate::model::{Channel, ChannelId, Device, DeviceId, Sample};
 use crate::stats::Stats;
 
@@ -109,12 +110,14 @@ enum Command {
     ResetAll,
     Reset(Vec<ChannelId>),
     OnTick(Box<dyn Fn() + Send>),
+    SetLogging(Option<LogSpec>),
     Stop,
 }
 
 struct Shared {
     snapshot: ArcSwap<Snapshot>,
     history: Mutex<HashMap<ChannelId, History>>,
+    logging: Mutex<LogStatus>,
 }
 
 /// Handle to the sampler thread. Dropping it stops the thread.
@@ -132,6 +135,7 @@ impl Sampler {
         let shared = Arc::new(Shared {
             snapshot: ArcSwap::from_pointee(Snapshot::empty(now, config.interval)),
             history: Mutex::new(HashMap::new()),
+            logging: Mutex::new(LogStatus::default()),
         });
         let (tx, rx) = mpsc::channel();
         let worker_shared = Arc::clone(&shared);
@@ -153,6 +157,16 @@ impl Sampler {
 
     pub fn set_interval(&self, interval: Duration) {
         self.send(Command::SetInterval(interval));
+    }
+
+    /// Starts CSV logging with `spec` (a new file), or stops it with `None`.
+    pub fn set_logging(&self, spec: Option<LogSpec>) {
+        self.send(Command::SetLogging(spec));
+    }
+
+    /// How CSV logging is going.
+    pub fn logging(&self) -> LogStatus {
+        self.shared.logging.lock().clone()
     }
 
     /// Changes how many points each channel's history keeps; shrinking drops the oldest.
@@ -248,6 +262,8 @@ struct Worker {
     /// Tick costs since the last health line.
     health: TickCosts,
     on_tick: Option<Box<dyn Fn() + Send>>,
+    /// CSV logging, while it is on.
+    logger: Option<CsvLogger>,
     scratch: Vec<Sample>,
     disabled_channels: HashSet<ChannelId>,
     disabled_devices: HashSet<DeviceId>,
@@ -282,6 +298,7 @@ impl Worker {
             tick_cost: Duration::ZERO,
             health: TickCosts::default(),
             on_tick: None,
+            logger: None,
             scratch: Vec::new(),
             disabled_channels: HashSet::new(),
             disabled_devices: HashSet::new(),
@@ -372,6 +389,24 @@ impl Worker {
                 }
             }
             Command::OnTick(on_tick) => self.on_tick = Some(on_tick),
+            Command::SetLogging(spec) => {
+                let mut status = self.shared.logging.lock();
+                match spec {
+                    Some(spec) => {
+                        info!(folder = %spec.folder.display(), "CSV logging on");
+                        let logger = CsvLogger::new(spec);
+                        *status = logger.status().clone();
+                        self.logger = Some(logger);
+                    }
+                    None => {
+                        if self.logger.take().is_some() {
+                            info!(rows = status.rows, "CSV logging off");
+                        }
+                        // The last file stays in the status, for the UI to point at.
+                        status.active = false;
+                    }
+                }
+            }
             Command::Stop => return false,
         }
         true
@@ -545,7 +580,14 @@ impl Worker {
         drop(history);
         self.tick += 1;
         self.tick_cost = start.elapsed();
-        self.publish();
+        let snapshot = self.publish();
+        if let Some(logger) = &mut self.logger {
+            logger.record(&snapshot, start, SystemTime::now());
+            *self.shared.logging.lock() = logger.status().clone();
+            if !logger.status().active {
+                self.logger = None;
+            }
+        }
         if let Some(line) = self.health_line() {
             line.log();
         }
@@ -585,7 +627,7 @@ impl Worker {
         })
     }
 
-    fn publish(&self) {
+    fn publish(&self) -> Arc<Snapshot> {
         let devices = self
             .publish_order
             .iter()
@@ -617,7 +659,9 @@ impl Worker {
             tick_cost: self.tick_cost,
             devices,
         };
-        self.shared.snapshot.store(Arc::new(snapshot));
+        let snapshot = Arc::new(snapshot);
+        self.shared.snapshot.store(Arc::clone(&snapshot));
+        snapshot
     }
 }
 
@@ -944,6 +988,7 @@ mod tests {
         let shared = Arc::new(Shared {
             snapshot: ArcSwap::from_pointee(Snapshot::empty(Instant::now(), MIN_INTERVAL)),
             history: Mutex::new(HashMap::new()),
+            logging: Mutex::new(LogStatus::default()),
         });
         let backends: Vec<Box<dyn Backend>> = vec![
             Box::new(Pair::new(told)),
@@ -1021,5 +1066,42 @@ mod tests {
             assert!(Instant::now() < deadline, "the capacity never changed");
             thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    #[test]
+    fn logging_writes_rows_while_on_and_stops_cleanly() {
+        use crate::logging::{LogSelection, LogSpec};
+        let dir = tempfile::tempdir().unwrap();
+        let sampler = Sampler::start(vec![Box::new(Counter::new())], fast(8));
+        sampler.set_logging(Some(LogSpec {
+            folder: dir.path().to_path_buf(),
+            interval: Duration::ZERO,
+            selection: LogSelection::AllExcept(HashSet::new()),
+            rotate_daily: false,
+            names: HashMap::new(),
+        }));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while sampler.logging().rows < 3 {
+            assert!(
+                Instant::now() < deadline,
+                "no rows: {:?}",
+                sampler.logging()
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        sampler.set_logging(None);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while sampler.logging().active {
+            assert!(Instant::now() < deadline, "logging did not stop");
+            thread::sleep(Duration::from_millis(5));
+        }
+        let status = sampler.logging();
+        let path = status.path.expect("the last file is kept in the status");
+        let text = std::fs::read_to_string(path).unwrap();
+        assert_eq!(
+            text.lines().next().unwrap(),
+            "time_utc,elapsed_s,Counter / Count"
+        );
+        assert!(text.lines().count() > 3);
     }
 }
